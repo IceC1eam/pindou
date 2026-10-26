@@ -38,6 +38,8 @@ backend/tests/       cd backend && python -m unittest discover -s tests -t .
 
 图纸下方的“烫豆效果预览”把同一份图纸画成不同**烫法**的样子——拼豆社区里常说的“正常烫、毛巾烫、澡巾烫”这一类：垫什么材料熨烫，表面就留下什么肌理。并排对比 8 种；点缩略图后，上方会把成品放在桌面上，镜头在正面和侧面间平滑往返，能看到熔接表面、轮廓和侧面厚度。可暂停镜头，并按当前视角导出桌面预览 PNG。
 
+桌面预览可选择豆子规格和实物参照：默认 5 mm 常规豆 + iPhone 16，也可用 2.5 mm 迷你豆、10 mm 大号豆、标准银行卡或关闭参照。成品按格数 × 所选毫米数估算宽高，实物与成品在桌面场景中按同一毫米比例绘制，导出图也包含参照物。规格依据：[Hama 官方豆子尺寸](https://hama.dk/en/pages/questions-and-answers-faq)（Mini 2.5 mm、Midi 5 mm、Maxi 10 mm）、[Apple iPhone 16 技术规格](https://www.apple.com/iphone-16/specs/)（71.6 × 147.6 mm）、[ISO/IEC 7810 ID-1 卡片尺寸](https://www.iso.org/obp/ui?_escaped_fragment_=iso%3Astd%3Aiso-iec%3A7810%3Aed-3%3Av1%3Aen)（85.60 × 53.98 mm）。实际豆板间距及熨烫后的尺寸可能因品牌和工艺略有差异；预览是物件之间的同比例，不保证屏幕上的厘米数与实物相同。
+
 | 烫法 | 做法 | 表面特征 |
 |---|---|---|
 | 有孔烫 | 加热至相邻豆子熔接 | 圆孔缩小但仍可见，颗粒轮廓变浅 |

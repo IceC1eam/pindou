@@ -126,6 +126,9 @@ canvas { -webkit-user-select: none; user-select: none; }
 /* 烫豆效果预览 */
 .preview { padding: 10px 14px; }
 .preview summary { font-weight: 650; }
+.pv-scale-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 6px 0 0; }
+.pv-scale-controls label { margin: 0; }
+#pv-dimensions { margin: 7px 0 10px; }
 .pv-main { overflow: hidden; border-radius: 10px; background: #e9dfd2; }
 .pv-main canvas { display: block; width: 100%; height: auto; }
 .pv-actions { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 8px 0 12px; }

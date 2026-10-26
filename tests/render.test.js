@@ -101,3 +101,22 @@ test("透明的成品贴图只画豆子，桌面场景在正面和侧面采用�
   }
   assert.notDeepEqual(transforms[0].slice(0, 4), transforms[2].slice(0, 4));
 });
+
+test("实物参照与豆子使用同一毫米比例，切换规格时参照物尺寸保持不变", () => {
+  const midi = Scene.physicalLayout(40, 30, 5, "iphone16");
+  const mini = Scene.physicalLayout(40, 30, 2.5, "iphone16");
+  assert.equal(midi.artWidthMm, 200);
+  assert.equal(mini.artWidthMm, 100);
+  assert.ok(Math.abs(midi.object.w * 5 - 71.6) < 1e-9);
+  assert.ok(Math.abs(midi.object.h * 5 - 147.6) < 1e-9);
+  assert.ok(Math.abs(mini.object.w * 2.5 - 71.6) < 1e-9);
+  assert.ok(midi.table.right > midi.object.x + midi.object.w);
+  const card = Scene.physicalLayout(8, 8, 5, "card");
+  assert.ok(Math.abs(card.object.w * 5 - 85.6) < 1e-9);
+  assert.ok(Math.abs(card.object.h * 5 - 53.98) < 1e-9);
+  const { ctx, calls } = fakeCtx();
+  Scene.drawScene(ctx, { ...sample(), texture: { width: 40, height: 30 }, width: 640, height: 360,
+    angle: 0.5, elevation: 0.7, beadMm: 5, reference: "iphone16" });
+  assert.equal(calls.transform, 3); // 成品两次投影 + 手机一次投影
+  assert.ok(calls.fillText >= 1);
+});

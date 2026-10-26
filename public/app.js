@@ -863,12 +863,20 @@
 
   // ---------- 烫豆效果预览 ----------
   const EFFECT_KEY = "pindou.effect";
+  const BEAD_KEY = "pindou.bead.mm", REFERENCE_KEY = "pindou.scale.reference";
   const CMP_CELL = 16, CMP_K = 8, CMP_PAD = 6;
   let effect = "flat", pvTimer = 0;
+  let beadMm = 5, reference = "iphone16";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let cameraPlaying = !reducedMotion.matches, cameraPhase = 0, cameraLast = 0, cameraFrame = 0;
   let sceneData = null, sceneWidth = 0, sceneHeight = 0;
   try { const e = localStorage.getItem(EFFECT_KEY); if (R.EFFECTS.some((x) => x.id === e)) effect = e; } catch { /* 隐私模式等 */ }
+  try {
+    const mm = Number(localStorage.getItem(BEAD_KEY));
+    if ([2.5, 5, 10].includes(mm)) beadMm = mm;
+    const obj = localStorage.getItem(REFERENCE_KEY);
+    if (obj === "none" || Scene.OBJECTS[obj]) reference = obj;
+  } catch { /* 隐私模式等 */ }
   const cmpCv = new Map();                 // 效果 id → 对比小图的 canvas
 
   /** 按设备像素比设置画布大小（最多 2 倍），返回 2d 上下文。 */
@@ -919,7 +927,26 @@
     renderPreview();
   }
 
+  function updateScale() {
+    beadMm = Number($("pv-bead-size").value);
+    reference = $("pv-reference").value;
+    try { localStorage.setItem(BEAD_KEY, String(beadMm)); localStorage.setItem(REFERENCE_KEY, reference); } catch { /* 隐私模式等 */ }
+    if (!sceneData) return;
+    sceneData.beadMm = beadMm; sceneData.reference = reference;
+    showPhysicalSize(); drawPreviewScene();
+  }
+
+  function showPhysicalSize() {
+    const cm = (mm) => (mm / 10).toFixed(2).replace(/\.?0+$/, "");
+    const layout = Scene.physicalLayout(state.W, state.H, beadMm, reference);
+    const spec = Scene.OBJECTS[reference];
+    $("pv-dimensions").textContent = `成品约 ${cm(layout.artWidthMm)} × ${cm(layout.artHeightMm)} cm · 按 ${beadMm} mm/格同比例估算`
+      + (spec ? ` · ${spec.name} ${spec.widthMm} × ${spec.heightMm} mm` : "");
+  }
+
   function initPreview() {
+    $("pv-bead-size").value = String(beadMm);
+    $("pv-reference").value = reference;
     $("pv-cmp").replaceChildren(...R.EFFECTS.map((f) => {
       const b = mk("button", "cmp");
       b.type = "button"; b.title = f.note;
@@ -942,7 +969,8 @@
     const texture = document.createElement("canvas");
     texture.width = state.W * cell; texture.height = state.H * cell;
     R.drawFused(texture.getContext("2d"), { ...base, cell, effect, pad: 0, transparent: true });
-    sceneData = { ...base, texture };
+    sceneData = { ...base, texture, beadMm, reference };
+    showPhysicalSize();
     sceneWidth = avail;
     sceneHeight = Math.max(290, Math.min(500, Math.round(avail * 0.65)));
     sizedCanvas($("pv"), sceneWidth, sceneHeight);
@@ -1039,6 +1067,8 @@
   });
   $("b-export").addEventListener("click", exportPng);
   $("pv-export").addEventListener("click", exportEffect);
+  $("pv-bead-size").addEventListener("change", updateScale);
+  $("pv-reference").addEventListener("change", updateScale);
   $("pv-motion").addEventListener("click", () => { cameraPlaying = !cameraPlaying; syncCamera(); });
   $("pv-box").addEventListener("toggle", () => { if ($("pv-box").open) schedulePreview(); else syncCamera(); });
   document.addEventListener("visibilitychange", syncCamera);
