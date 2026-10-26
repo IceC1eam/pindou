@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender, Scene = PindouScene;
+  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender, Ref = PindouReference, Scene = PindouScene;
   const $ = (id) => document.getElementById(id);
   const show = (id, on) => { $(id).hidden = !on; };
   const LS_KEY = "pindou.config.v1";
@@ -38,6 +38,7 @@
     edited: false, stale: false,
     tool: "view", brush: -1, highlight: -1,
   };
+  let refTool = "", crop = null, cropDrag = null;
 
   // 应用挂在 /pindou/ 下：一律用相对路径；写请求带 X-Requested-With（网关的 CSRF 约定）
   async function api(path, opts = {}) {
@@ -253,7 +254,11 @@
 
   /** 采用一张已解码的图片作为源图（本地选择或 AI 结果共用）。 */
   function useImage(el, name) {
-    state.img = { el, w: el.naturalWidth, h: el.naturalHeight, name };
+    const w = el.naturalWidth || el.width, h = el.naturalHeight || el.height;
+    state.img = { base: el, el, w, h, name, key: null };
+    $("key-color").value = "#ffffff";
+    $("key-tolerance").value = "30"; $("key-value").textContent = "30";
+    setRefTool("");
     if (cfg.lock) cfg.height = clampSide(cfg.width * state.img.h / state.img.w);
     writeControls(); saveCfg(); showImgInfo();
     regenerate();
@@ -268,26 +273,155 @@
   function showImgInfo() {
     const has = !!state.img;
     $("b-pick").hidden = has;
+    $("b-crop").hidden = !has;
+    $("b-key").hidden = !has;
     $("b-clear-img").hidden = !has;
+    $("key-reset").hidden = !has || !state.img.key;
     $("drop").classList.toggle("has-image", has);
     $("ai-text").placeholder = has ? "例如：把当前图片的背景改成蓝色" : "例如：一只戴红围巾的橘猫，可爱简洁";
     $("img-info").textContent = has
-      ? `${state.img.name} · ${state.img.w}×${state.img.h}`
+      ? `${state.img.name} · ${state.img.w}×${state.img.h}${state.img.key ? " · 已去边" : ""}`
       : "不选图片则从空白画布开始手动绘制。";
     drawRef();
     updateAiUi();
   }
 
-  /** 左侧参考图预览（透明处铺白，和 AI 修改时上传的内容一致）。 */
+  /** 左侧参考图预览；透明处由底部棋盘格显示。 */
   function drawRef() {
     const has = !!state.img;
     show("ref-cv", has); show("ref-empty", !has);
     if (!has) return;
-    const c = $("ref-cv"), s = Math.min(1, 900 / Math.max(state.img.w, state.img.h));
+    const c = $("ref-cv"), s = Math.min(4, 900 / Math.max(state.img.w, state.img.h));
     c.width = Math.max(1, Math.round(state.img.w * s)); c.height = Math.max(1, Math.round(state.img.h * s));
     const g = c.getContext("2d");
-    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
     g.drawImage(state.img.el, 0, 0, c.width, c.height);
+    if (refTool === "crop" && crop) {
+      const x = crop.x * c.width, y = crop.y * c.height, w = crop.w * c.width, h = crop.h * c.height;
+      g.fillStyle = "rgba(12,13,18,.53)";
+      g.fillRect(0, 0, c.width, y); g.fillRect(0, y, x, h);
+      g.fillRect(x + w, y, c.width - x - w, h); g.fillRect(0, y + h, c.width, c.height - y - h);
+      g.strokeStyle = "#fff"; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2));
+      g.setLineDash([6, 4]); g.strokeStyle = "#14161a"; g.lineWidth = 1; g.strokeRect(x + 3, y + 3, Math.max(0, w - 6), Math.max(0, h - 6)); g.setLineDash([]);
+    }
+    $("crop-apply").disabled = !crop || crop.w * state.img.w < 8 || crop.h * state.img.h < 8;
+  }
+
+  // ---------- 参考图裁剪与边缘色度键 ----------
+  function setRefTool(tool) {
+    refTool = tool;
+    crop = null; cropDrag = null;
+    $("crop-tools").hidden = tool !== "crop";
+    $("key-tools").hidden = tool !== "key";
+    $("drop").classList.toggle("cropping", tool === "crop");
+    $("b-crop").classList.toggle("on", tool === "crop");
+    $("b-key").classList.toggle("on", tool === "key");
+    drawRef();
+  }
+
+  function cropRatio() {
+    const mode = $("crop-ratio").value;
+    if (mode === "free") return 0;
+    if (mode === "image") return state.img.w / state.img.h;
+    return cfg.width / cfg.height;
+  }
+
+  function refPoint(e) {
+    const r = $("ref-cv").getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+      y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+  }
+
+  function startCrop(e) {
+    if (refTool !== "crop" || !state.img || ai.busy) return;
+    e.preventDefault();
+    const p = refPoint(e);
+    const inside = crop && p.x >= crop.x && p.x <= crop.x + crop.w && p.y >= crop.y && p.y <= crop.y + crop.h;
+    cropDrag = { start: p, before: inside ? { ...crop } : null };
+    if (!inside) crop = null;
+    $("ref-cv").setPointerCapture(e.pointerId);
+    drawRef();
+  }
+
+  function moveCrop(e) {
+    if (!cropDrag || !state.img) return;
+    e.preventDefault();
+    const p = refPoint(e), d = cropDrag;
+    if (d.before) crop = { ...d.before,
+      x: Math.max(0, Math.min(1 - d.before.w, d.before.x + p.x - d.start.x)),
+      y: Math.max(0, Math.min(1 - d.before.h, d.before.y + p.y - d.start.y)) };
+    else crop = Ref.cropRect(d.start, p, cropRatio(), state.img.w, state.img.h);
+    drawRef();
+  }
+
+  function endCrop(e) {
+    if (!cropDrag) return;
+    moveCrop(e);
+    cropDrag = null;
+  }
+
+  function applyCrop() {
+    if (!state.img || ai.busy || !crop || $("crop-apply").disabled || !confirmReplace()) return;
+    const im = state.img, source = im.base;
+    const W = source.naturalWidth || source.width, H = source.naturalHeight || source.height;
+    const sx = Math.round(crop.x * W), sy = Math.round(crop.y * H);
+    const sw = Math.min(W - sx, Math.max(1, Math.round(crop.w * W)));
+    const sh = Math.min(H - sy, Math.max(1, Math.round(crop.h * H)));
+    const scale = Math.min(1, 3000 / Math.max(sw, sh));
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(sw * scale)); out.height = Math.max(1, Math.round(sh * scale));
+    const before = { base: im.base, el: im.el, w: im.w, h: im.h, name: im.name };
+    try {
+      out.getContext("2d").drawImage(source, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      im.base = out;
+      if (im.key) rebuildKey();
+      else { im.el = out; im.w = out.width; im.h = out.height; }
+    } catch {
+      Object.assign(im, before);
+      return toast("裁剪失败：图片过大或无法读取像素", true);
+    }
+    im.name = im.name.replace(/（已裁剪）$/, "") + "（已裁剪）";
+    if (cfg.lock) cfg.height = clampSide(cfg.width * im.h / im.w);
+    writeControls(); saveCfg(); setRefTool(""); showImgInfo(); regenerate();
+  }
+
+  function rebuildKey() {
+    const im = state.img, source = im.base;
+    const W = source.naturalWidth || source.width, H = source.naturalHeight || source.height;
+    const scale = Math.min(1, 2400 / Math.max(W, H));
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(W * scale)); out.height = Math.max(1, Math.round(H * scale));
+    const g = out.getContext("2d", { willReadFrequently: true });
+    g.drawImage(source, 0, 0, out.width, out.height);
+    const keyed = Ref.edgeChromaKey(g.getImageData(0, 0, out.width, out.height), im.key.color, im.key.tolerance);
+    g.putImageData(new ImageData(keyed.data, keyed.width, keyed.height), 0, 0);
+    im.el = out; im.w = out.width; im.h = out.height;
+  }
+
+  function applyKey() {
+    if (!state.img || ai.busy || !confirmReplace()) return;
+    const im = state.img, previous = im.key;
+    im.key = { color: $("key-color").value, tolerance: Number($("key-tolerance").value) };
+    try { rebuildKey(); }
+    catch (e) { im.key = previous; return toast("去边失败：图片过大或无法读取像素", true); }
+    showImgInfo(); regenerate();
+  }
+
+  function resetKey() {
+    if (!state.img || !state.img.key || ai.busy || !confirmReplace()) return;
+    const im = state.img;
+    im.key = null; im.el = im.base;
+    im.w = im.base.naturalWidth || im.base.width;
+    im.h = im.base.naturalHeight || im.base.height;
+    showImgInfo(); regenerate();
+  }
+
+  function sampleKeyColor() {
+    if (!state.img) return;
+    const source = state.img.base, c = document.createElement("canvas");
+    c.width = 512; c.height = 512;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(source, 0, 0, c.width, c.height);
+    $("key-color").value = Ref.dominantEdgeColor(g.getImageData(0, 0, c.width, c.height));
   }
 
   // ---------- AI（服务端代理火山方舟；密钥不在浏览器里） ----------
@@ -311,6 +445,11 @@
     $("ai-edit").disabled = off;
     $("b-pick").disabled = !!ai.busy;
     $("b-clear-img").disabled = !!ai.busy;
+    $("b-crop").disabled = !!ai.busy;
+    $("b-key").disabled = !!ai.busy;
+    $("crop-apply").disabled = !!ai.busy || !crop || !state.img || crop.w * state.img.w < 8 || crop.h * state.img.h < 8;
+    $("key-apply").disabled = !!ai.busy;
+    $("key-reset").disabled = !!ai.busy;
     $("ai-preset").disabled = !!ai.busy;
     const st = $("ai-status");
     st.classList.remove("bad");
@@ -428,6 +567,7 @@
 
   function clearToBlank() {
     state.img = null; $("file").value = "";
+    setRefTool("");
     showImgInfo(); regenerate();
   }
 
@@ -833,6 +973,20 @@
   $("b-pick").addEventListener("click", () => $("file").click());
   $("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
   $("b-clear-img").addEventListener("click", clearImage);
+  $("b-crop").addEventListener("click", () => setRefTool(refTool === "crop" ? "" : "crop"));
+  $("b-key").addEventListener("click", () => setRefTool(refTool === "key" ? "" : "key"));
+  $("crop-ratio").addEventListener("change", () => { crop = null; drawRef(); });
+  $("crop-apply").addEventListener("click", applyCrop);
+  $("crop-clear").addEventListener("click", () => { crop = null; drawRef(); });
+  $("crop-cancel").addEventListener("click", () => setRefTool(""));
+  $("ref-cv").addEventListener("pointerdown", startCrop);
+  $("ref-cv").addEventListener("pointermove", moveCrop);
+  $("ref-cv").addEventListener("pointerup", endCrop);
+  $("ref-cv").addEventListener("pointercancel", () => { cropDrag = null; });
+  $("key-tolerance").addEventListener("input", () => { $("key-value").textContent = $("key-tolerance").value; });
+  $("key-sample").addEventListener("click", sampleKeyColor);
+  $("key-apply").addEventListener("click", applyKey);
+  $("key-reset").addEventListener("click", resetKey);
   $("b-regen").addEventListener("click", () => {
     if (state.edited && !confirm("将丢弃手动修改并重新生成。继续？")) return;
     regenerate();

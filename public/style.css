@@ -66,8 +66,18 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 
 /* 左：参考图预览 + AI 聊天 */
 .ref { display: flex; flex-direction: column; }
-.refbox { display: grid; place-items: center; min-height: 140px; max-height: 30vh; overflow: hidden; background: #fff; }
+.refbox { display: grid; place-items: center; min-height: 140px; max-height: 30vh; overflow: hidden; background-color: #fff; }
+.refbox.has-image { background-image: linear-gradient(45deg, #e8e8e8 25%, transparent 25%), linear-gradient(-45deg, #e8e8e8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e8e8e8 75%), linear-gradient(-45deg, transparent 75%, #e8e8e8 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
 .refbox canvas { max-width: 100%; max-height: calc(30vh - 24px); width: auto; height: auto; }
+.refbox.cropping { max-height: 55vh; }
+.refbox.cropping canvas { max-height: calc(55vh - 24px); cursor: crosshair; touch-action: none; }
+.ref-tools { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.row .btn.on { border-color: var(--accent); color: var(--accent); }
+.ref-tools label { margin-bottom: 6px; }
+.ref-tools .hint { margin: 2px 0 9px; }
+.key-fields { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(150px, 2fr); gap: 12px; }
+.key-fields input[type=color] { display: block; width: 100%; height: 36px; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.key-fields output { float: right; color: var(--ink); }
 .ref-empty { margin: 0; text-align: center; color: #5d6572; font-size: 14px; }
 .chat { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

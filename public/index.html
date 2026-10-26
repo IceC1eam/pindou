@@ -29,7 +29,25 @@
       <input id="file" type="file" accept="image/*" hidden>
       <div class="row">
         <button id="b-pick" class="btn ghost small" type="button">选择图片</button>
+        <button id="b-crop" class="btn ghost small" type="button" hidden>裁剪</button>
+        <button id="b-key" class="btn ghost small" type="button" hidden>边缘色度键</button>
         <button id="b-clear-img" class="btn ghost small" type="button" hidden>清除当前图片</button>
+      </div>
+      <div id="crop-tools" class="ref-tools" hidden>
+        <label>裁剪比例
+          <select id="crop-ratio">
+            <option value="pattern">锁定图纸比例</option>
+            <option value="image">锁定原图比例</option>
+            <option value="free">自由裁剪</option>
+          </select>
+        </label>
+        <p class="hint">在图片上拖出范围；在选区内拖动可调整位置。</p>
+        <div class="row"><button id="crop-apply" class="btn primary small" type="button">应用裁剪</button><button id="crop-clear" class="btn ghost small" type="button">重新框选</button><button id="crop-cancel" class="btn ghost small" type="button">取消</button></div>
+      </div>
+      <div id="key-tools" class="ref-tools" hidden>
+        <div class="key-fields"><label>边缘颜色 <input id="key-color" type="color" value="#ffffff"></label><label>容差 <output id="key-value">30</output><input id="key-tolerance" type="range" min="0" max="100" value="30"></label></div>
+        <p class="hint">只去除与图片边缘连通的相近颜色；透明区域显示为棋盘格。图纸留空需开启“透明区域不放豆”。</p>
+        <div class="row"><button id="key-sample" class="btn ghost small" type="button">吸取边缘主色</button><button id="key-apply" class="btn primary small" type="button">应用去边</button><button id="key-reset" class="btn ghost small" type="button" hidden>还原去边</button></div>
       </div>
       <p class="hint" id="img-info"></p>
     </div>
@@ -150,6 +168,7 @@
 <script src="palettes.js"></script>
 <script src="quantize.js"></script>
 <script src="render.js"></script>
+<script src="reference.js"></script>
 <script src="scene.js"></script>
 <script src="app.js"></script>
 </body>
