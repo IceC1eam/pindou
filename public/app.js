@@ -99,12 +99,18 @@
     return typeof DEFAULTS[k] === "number" ? Number(el.value) : el.value;
   }
 
+  /** 色号的完整文字：有名称就“色号 名称”，名称和色号一样（或没有）就只写色号。 */
+  const colorText = (p) => (p.name && p.name !== p.code ? `${p.code} ${p.name}` : p.code);
+
   function initPaletteSelect() {
-    ctl("palette").replaceChildren(...Pal.palettes.map((p) => {
+    const groups = new Map();                        // 通用 / 国内品牌 / 国际品牌 分组显示
+    for (const p of Pal.palettes) {
+      if (!groups.has(p.group)) { const g = document.createElement("optgroup"); g.label = p.group; groups.set(p.group, g); }
       const o = document.createElement("option");
       o.value = p.id; o.textContent = p.name;
-      return o;
-    }));
+      groups.get(p.group).append(o);
+    }
+    ctl("palette").replaceChildren(...groups.values());
     if (!Pal.palettes.some((p) => p.id === cfg.palette)) cfg.palette = DEFAULTS.palette;
   }
 
@@ -112,10 +118,15 @@
     const n = currentPalette().length;
     ctl("maxColors").max = String(n);
     if (cfg.maxColors > n) cfg.maxColors = n;
+    const p = Pal.byId(cfg.palette);
+    $("pal-note").textContent = p.note || (p.brand
+      ? "品牌色号取自公开色卡数据（见 README），屏幕颜色与实物豆子有色差，下单前请对照实物色卡。"
+      : "通用色板的编号 P01… 是本应用的占位编号，不对应任何品牌。");
   }
 
   function onControl(k) {
     let v = readControl(k);
+    if (k === "zoom") return setZoom(v);
     if (k === "width" || k === "height") v = clampSide(v);
     if (k === "board") v = Math.max(0, Math.min(MAX_SIDE, Math.round(v) || 0));
     cfg[k] = v;
@@ -157,6 +168,7 @@
       for (let y = 0; y < Math.min(state.H, cfg.height); y++)
         for (let x = 0; x < Math.min(state.W, cfg.width); x++) next[y * cfg.width + x] = state.grid[y * state.W + x];
       state.grid = next; state.W = cfg.width; state.H = cfg.height;
+      clampZoomToGrid();
     }
     state.highlight = -1;
     redraw(); renderStats();
@@ -195,6 +207,7 @@
     clearTimeout(regenTimer);
     const pal = currentPalette();
     state.palette = pal; state.W = cfg.width; state.H = cfg.height;
+    clampZoomToGrid();
     if (state.img) {
       const data = rasterize(state.img, state.W, state.H, cfg.fit, !cfg.blank);
       Core.adjust(data.data, cfg);
@@ -479,6 +492,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     R.drawPattern(ctx, drawOpts(cfg.zoom, state.highlight));
     logical = sz;
+    updateZoomUi();
   }
 
   function renderStats() {
@@ -491,7 +505,7 @@
       const dot = document.createElement("span");
       dot.className = "dot"; dot.style.background = p.hex;
       const name = document.createElement("span");
-      name.textContent = `${p.code} ${p.name}`;
+      name.textContent = colorText(p);
       const n = document.createElement("span");
       n.className = "n"; n.textContent = "×" + it.count;
       li.append(dot, name, n);
@@ -502,6 +516,7 @@
     if (cfg.board > 0) t += ` · 约 ${Math.ceil(state.W / cfg.board) * Math.ceil(state.H / cfg.board)} 块拼板`;
     $("total").textContent = t;
     $("info").textContent = `${state.W} × ${state.H}`;
+    schedulePreview();
   }
 
   function setHighlight(idx) {
@@ -516,15 +531,15 @@
     for (const [id, name] of [["t-view", "view"], ["t-pen", "pen"], ["t-erase", "erase"]])
       $(id).classList.toggle("on", name === t);
     $("swatches").hidden = t !== "pen";
-    document.querySelector(".canvas-wrap").classList.toggle("drawing", t !== "view");
+    $("wrap").classList.toggle("drawing", t !== "view");
   }
 
   function renderSwatches() {
     $("swatches").replaceChildren(...state.palette.map((p, i) => {
       const b = document.createElement("button");
       b.type = "button"; b.className = "sw" + (i === state.brush ? " on" : "");
-      b.style.background = p.hex; b.title = `${p.code} ${p.name}`;
-      b.setAttribute("aria-label", `${p.code} ${p.name}`);
+      b.style.background = p.hex; b.title = colorText(p);
+      b.setAttribute("aria-label", colorText(p));
       b.addEventListener("click", () => {
         state.brush = i;
         for (const el of $("swatches").children) el.classList.remove("on");
@@ -542,7 +557,72 @@
     return cx >= 0 && cy >= 0 && cx < state.W && cy < state.H ? cy * state.W + cx : -1;
   }
 
-  let painting = false, dirty = false;
+  // ---------- 视图：缩放与拖动 ----------
+  // PC：滚轮缩放（以光标为中心）、拖动移动、画笔/橡皮模式下按住空格或鼠标中键拖动。
+  // 触屏：查看模式单指拖动；画笔/橡皮模式单指涂画；任何模式双指捏合缩放并移动。
+  const wrap = $("wrap");
+  const MIN_ZOOM = 4, BASE_ZOOM = 22;
+  function maxZoom() { return Math.max(12, Math.min(64, Math.floor(Math.sqrt(25e6 / Math.max(1, state.W * state.H))))); }
+  const clampZoom = (z) => Math.max(MIN_ZOOM, Math.min(maxZoom(), Math.round(z)));
+  function clampZoomToGrid() { if (cfg.zoom > maxZoom()) { cfg.zoom = maxZoom(); writeControls(); } }
+  let zf = cfg.zoom;                       // 滚轮累积用的浮点缩放（整数缩放对触控板的小步长不灵敏）
+
+  function updateZoomUi() {
+    $("z-label").textContent = Math.round(cfg.zoom / BASE_ZOOM * 100) + "%";
+    $("z-out").disabled = cfg.zoom <= MIN_ZOOM;
+    $("z-in").disabled = cfg.zoom >= maxZoom();
+  }
+
+  /** 视口内一点 → 它下面的格子坐标（小数）。 */
+  function viewCell(px, py) {
+    return { cx: (wrap.scrollLeft + px - logical.m) / cfg.zoom, cy: (wrap.scrollTop + py - logical.m) / cfg.zoom };
+  }
+
+  /** 缩放到 z，并让格子坐标 (cx, cy) 落在视口点 (px, py) 上。 */
+  function placeView(z, cx, cy, px, py) {
+    z = clampZoom(z);
+    if (z !== cfg.zoom) { cfg.zoom = z; saveCfg(); paint(); }     // 同步重画，下面才能按新尺寸设置滚动位置
+    writeControls();
+    wrap.scrollLeft = cx * z + logical.m - px;
+    wrap.scrollTop = cy * z + logical.m - py;
+    updateZoomUi();
+  }
+
+  function setZoom(z, px = wrap.clientWidth / 2, py = wrap.clientHeight / 2) {
+    const { cx, cy } = viewCell(px, py);
+    placeView(z, cx, cy, px, py);
+  }
+
+  function fitZoom() {
+    const m = logical.m || 28;
+    const zw = Math.floor((wrap.clientWidth - m - 10) / state.W);
+    const zh = Math.floor((window.innerHeight * 0.78 - m - 10) / state.H);   // 画布区最高 78vh；不能用它此刻的高度（缩小后会变矮）
+    placeView(Math.min(zw, zh), 0, 0, m, m);
+    zf = cfg.zoom;
+  }
+
+  wrap.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    const dy = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+    if (Math.abs(zf - cfg.zoom) > 1) zf = cfg.zoom;
+    zf = Math.max(MIN_ZOOM, Math.min(maxZoom(), zf * Math.exp(-dy * (ev.ctrlKey ? 0.01 : 0.0018))));
+    const r = wrap.getBoundingClientRect();
+    setZoom(zf, ev.clientX - r.left, ev.clientY - r.top);
+  }, { passive: false });
+  const zoomStep = (dir) => setZoom(cfg.zoom + dir * Math.max(1, Math.round(cfg.zoom * 0.2)));
+  $("z-in").addEventListener("click", () => { zoomStep(1); zf = cfg.zoom; });
+  $("z-out").addEventListener("click", () => { zoomStep(-1); zf = cfg.zoom; });
+  $("z-fit").addEventListener("click", fitZoom);
+
+  // ---------- 指针：涂画 / 拖动 / 捏合 ----------
+  const pts = new Map();                   // 当前按下的指针
+  let painting = false, dirty = false, pan = null, pinch = null, spaceDown = false, hover = false;
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const mid = () => {
+    const [a, b] = [...pts.values()], r = wrap.getBoundingClientRect();
+    return { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top, d: dist(a, b) };
+  };
+
   function paintCell(i) {
     const v = state.tool === "erase" ? -1 : state.brush;
     if (state.tool === "pen" && v < 0) { toast("先在上方选一个颜色"); return; }
@@ -552,27 +632,153 @@
     redraw();
   }
 
-  cv.addEventListener("pointerdown", (ev) => {
+  const endPaint = () => { if (painting && dirty) renderStats(); painting = false; dirty = false; };
+
+  function highlightAt(ev) {
     const i = cellAt(ev);
-    if (state.tool === "view") {
-      const idx = i >= 0 ? state.grid[i] : -1;
-      setHighlight(idx >= 0 && idx !== state.highlight ? idx : -1);
+    const idx = i >= 0 ? state.grid[i] : -1;
+    setHighlight(idx >= 0 && idx !== state.highlight ? idx : -1);
+  }
+
+  cv.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType === "mouse" && ev.button === 2) return;
+    try { cv.setPointerCapture(ev.pointerId); } catch { /* 触点已失效 */ }
+    pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pts.size === 2) {                  // 双指：放弃正在进行的涂画/拖动，转为捏合
+      endPaint(); pan = null; wrap.classList.remove("panning");
+      const m = mid();
+      pinch = { d0: Math.max(1, m.d), z0: cfg.zoom, ...viewCell(m.x, m.y) };
       return;
     }
-    if (i < 0) return;
+    if (pts.size > 2) return;
     ev.preventDefault();
-    cv.setPointerCapture(ev.pointerId);
+    if (state.tool === "view" || ev.button === 1 || spaceDown) {
+      pan = { x: ev.clientX, y: ev.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop, moved: false, tap: ev.button === 0 && !spaceDown };
+      wrap.classList.add("panning");
+      return;
+    }
+    const i = cellAt(ev);
+    if (i < 0) return;
     painting = true;
     paintCell(i);
   });
+
   cv.addEventListener("pointermove", (ev) => {
-    if (!painting) return;
-    const i = cellAt(ev);
-    if (i >= 0) paintCell(i);
+    const p = pts.get(ev.pointerId);
+    if (!p) return;
+    p.x = ev.clientX; p.y = ev.clientY;
+    if (pinch && pts.size === 2) {
+      const m = mid();
+      placeView(pinch.z0 * m.d / pinch.d0, pinch.cx, pinch.cy, m.x, m.y);
+      zf = cfg.zoom;
+      return;
+    }
+    if (pan) {
+      const dx = ev.clientX - pan.x, dy = ev.clientY - pan.y;
+      if (!pan.moved && Math.hypot(dx, dy) > 4) pan.moved = true;
+      if (pan.moved) { wrap.scrollLeft = pan.sl - dx; wrap.scrollTop = pan.st - dy; }
+      return;
+    }
+    if (painting) {
+      const i = cellAt(ev);
+      if (i >= 0) paintCell(i);
+    }
   });
-  const endPaint = () => { if (painting && dirty) renderStats(); painting = false; dirty = false; };
-  cv.addEventListener("pointerup", endPaint);
-  cv.addEventListener("pointercancel", endPaint);
+
+  function endPointer(ev) {
+    if (!pts.delete(ev.pointerId)) return;
+    if (pinch) { if (pts.size < 2) pinch = null; return; }   // 捏合结束后剩下的手指不当作点击/涂画
+    if (pan) {
+      if (!pan.moved && pan.tap && state.tool === "view" && ev.type === "pointerup") highlightAt(ev);   // 轻点 = 高亮同色
+      pan = null; wrap.classList.remove("panning");
+    }
+    endPaint();
+  }
+  cv.addEventListener("pointerup", endPointer);
+  cv.addEventListener("pointercancel", endPointer);
+
+  wrap.addEventListener("mouseenter", () => { hover = true; });
+  wrap.addEventListener("mouseleave", () => { hover = false; });
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || !hover || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (document.activeElement.tagName === "BUTTON") document.activeElement.blur();   // 刚点过色块时，空格不能变成“再点一次”
+    e.preventDefault(); spaceDown = true; wrap.classList.add("hand");
+  });
+  document.addEventListener("keyup", (e) => { if (e.code === "Space") { spaceDown = false; wrap.classList.remove("hand"); } });
+
+  // ---------- 烫豆效果预览 ----------
+  const EFFECT_KEY = "pindou.effect";
+  const PV_PAD = 14, CMP_CELL = 16, CMP_K = 8, CMP_PAD = 6;
+  let effect = "flat", pvTimer = 0;
+  try { const e = localStorage.getItem(EFFECT_KEY); if (R.EFFECTS.some((x) => x.id === e)) effect = e; } catch { /* 隐私模式等 */ }
+  const cmpCv = new Map();                 // 效果 id → 对比小图的 canvas
+
+  /** 按设备像素比设置画布大小（最多 2 倍），返回 2d 上下文。 */
+  function sizedCanvas(c, w, h) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    c.style.width = w + "px"; c.style.height = h + "px";
+    const g = c.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 120); }
+
+  function setEffect(id) {
+    effect = id;
+    try { localStorage.setItem(EFFECT_KEY, id); } catch { /* 隐私模式等 */ }
+    renderPreview();
+  }
+
+  function initPreview() {
+    $("pv-cmp").replaceChildren(...R.EFFECTS.map((f) => {
+      const b = mk("button", "cmp");
+      b.type = "button"; b.title = f.note;
+      const c = mk("canvas");
+      cmpCv.set(f.id, c);
+      b.append(c, mk("span", "cn", f.name));
+      b.addEventListener("click", () => setEffect(f.id));
+      return b;
+    }));
+  }
+
+  function renderPreview() {
+    if (!$("pv-box").open || !state.grid) return;
+    const total = Core.summarize(state.grid, state.palette.length).total;
+    show("pv-empty", !total); show("pv-body", !!total);
+    if (!total) return;
+    const avail = Math.max(160, $("pv-main").clientWidth);
+    const cell = Math.max(3, Math.min(20, Math.floor((avail - 2 * PV_PAD) / state.W)));
+    const base = { W: state.W, H: state.H, grid: state.grid, palette: state.palette };
+    R.drawFused(sizedCanvas($("pv"), state.W * cell + 2 * PV_PAD, state.H * cell + 2 * PV_PAD),
+      { ...base, cell, effect, pad: PV_PAD });
+    const crop = R.pickCrop(state.W, state.H, state.grid, CMP_K);
+    for (const f of R.EFFECTS) {
+      const c = cmpCv.get(f.id);
+      R.drawFused(sizedCanvas(c, crop.w * CMP_CELL + 2 * CMP_PAD, crop.h * CMP_CELL + 2 * CMP_PAD),
+        { ...base, cell: CMP_CELL, effect: f.id, pad: CMP_PAD, crop });
+      c.parentElement.classList.toggle("on", f.id === effect);
+    }
+    $("pv-note").textContent = "· " + R.EFFECTS.find((f) => f.id === effect).note;
+  }
+
+  function exportEffect() {
+    if (!state.grid || !Core.summarize(state.grid, state.palette.length).total) return toast("图纸是空的，先放一些豆子", true);
+    const cell = Math.max(8, Math.min(32, Math.floor(2400 / Math.max(state.W, state.H))));
+    const pad = Math.round(cell * 1.5);
+    const c = document.createElement("canvas");
+    c.width = state.W * cell + 2 * pad; c.height = state.H * cell + 2 * pad;
+    R.drawFused(c.getContext("2d"), { W: state.W, H: state.H, grid: state.grid, palette: state.palette, cell, effect, pad });
+    c.toBlob((blob) => {
+      if (!blob) return toast("导出失败：图纸太大", true);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `pindou-${effect}-${state.W}x${state.H}.png`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }, "image/png");
+  }
 
   // ---------- 导出 ----------
   function exportPng() {
@@ -621,6 +827,9 @@
     regenerate();
   });
   $("b-export").addEventListener("click", exportPng);
+  $("pv-export").addEventListener("click", exportEffect);
+  $("pv-box").addEventListener("toggle", schedulePreview);
+  window.addEventListener("resize", schedulePreview);
   $("ai-gen").addEventListener("click", () => aiRun("generate"));
   $("ai-edit").addEventListener("click", () => aiRun("edit"));
   $("ai-preset").addEventListener("change", () => {
@@ -646,6 +855,7 @@
   writeControls();
   showImgInfo();
   setTool("view");
+  initPreview();
   regenerate();
   loadAiStatus();
 })();

@@ -75,7 +75,8 @@
 
       <details open>
         <summary>颜色</summary>
-        <label>色板 <select id="c-palette"></select></label>
+        <label>色板 / 品牌色号 <select id="c-palette"></select></label>
+        <p id="pal-note" class="hint"></p>
         <label>最多使用颜色数 <output id="o-maxColors"></output>
           <input id="c-maxColors" type="range" min="0" max="48" step="1">
         </label>
@@ -96,7 +97,7 @@
         <label>豆子样式
           <select id="c-style"><option value="circle">圆形</option><option value="square">方形</option></select>
         </label>
-        <label>缩放 <output id="o-zoom"></output><input id="c-zoom" type="range" min="8" max="44" step="2"></label>
+        <label>缩放 <output id="o-zoom"></output><input id="c-zoom" type="range" min="4" max="64" step="1"></label>
         <label class="check"><input id="c-showGrid" type="checkbox"><span>显示网格</span></label>
         <label class="check"><input id="c-showCodes" type="checkbox"><span>显示色号（缩放够大时）</span></label>
         <label>加粗线间隔
@@ -117,13 +118,35 @@
     </div>
     <p id="stale" class="note" hidden>已手动修改图纸。改动配置不会自动应用，点“按当前配置重新生成”会丢弃手动修改。</p>
     <div id="swatches" class="swatches" hidden></div>
-    <div class="canvas-wrap"><canvas id="cv"></canvas></div>
+    <div class="canvas-box">
+      <div id="wrap" class="canvas-wrap"><canvas id="cv"></canvas></div>
+      <div class="zoom-ctl" role="group" aria-label="缩放">
+        <button id="z-out" type="button" aria-label="缩小">−</button>
+        <output id="z-label">100%</output>
+        <button id="z-in" type="button" aria-label="放大">＋</button>
+        <button id="z-fit" type="button" title="缩放到刚好放下整张图纸">适应</button>
+      </div>
+    </div>
+    <p class="hint zoom-tip">滚轮缩放、拖动移动；画笔/橡皮模式下按住空格再拖动；触屏用双指缩放和移动。</p>
+
+    <details id="pv-box" class="card preview" open>
+      <summary>烫豆效果预览 <span id="pv-note" class="hint"></span></summary>
+      <p id="pv-empty" class="hint" hidden>图纸还是空的，放几颗豆子后这里会显示熨烫后的样子。</p>
+      <div id="pv-body">
+        <div id="pv-main" class="pv-main"><canvas id="pv"></canvas></div>
+        <p class="hint">下面是同一处局部在各种烫法下的对比，点一个切换上方的整体预览。效果仅为示意，实际取决于豆子品牌、温度和熨烫时间。</p>
+        <div id="pv-cmp" class="pv-cmp"></div>
+        <button id="pv-export" class="btn ghost small" type="button">导出效果图 PNG</button>
+      </div>
+    </details>
+
     <h2>用量清单 <span id="total" class="hint"></span></h2>
     <ul id="stats" class="stats"></ul>
   </section>
 </main>
 
 <div id="toast" role="status" aria-live="polite"></div>
+<script src="palettes-brands.js"></script>
 <script src="palettes.js"></script>
 <script src="quantize.js"></script>
 <script src="render.js"></script>

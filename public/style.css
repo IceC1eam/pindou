@@ -106,8 +106,29 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset; cursor: pointer; padding: 0; }
 .sw.on { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.canvas-wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: auto; max-height: 78vh; box-shadow: var(--shadow); touch-action: pan-x pan-y; }
-.canvas-wrap.drawing { touch-action: none; cursor: crosshair; }
+.canvas-box { position: relative; }
+.canvas-wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: auto; max-height: 78vh; box-shadow: var(--shadow); touch-action: none; cursor: grab; overscroll-behavior: contain; }
+.canvas-wrap.drawing { cursor: crosshair; }
+.canvas-wrap.hand { cursor: grab; }
+.canvas-wrap.panning { cursor: grabbing; }
+canvas { -webkit-user-select: none; user-select: none; }
+.zoom-ctl { position: absolute; right: 22px; bottom: 22px; display: flex; align-items: center; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.zoom-ctl button { font: inherit; font-size: 15px; min-width: 40px; min-height: 40px; padding: 0 8px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.zoom-ctl button:disabled { opacity: .35; cursor: not-allowed; }
+.zoom-ctl button:hover:not(:disabled) { background: var(--bg); }
+.zoom-ctl output { min-width: 52px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.zoom-tip { margin: 6px 2px 12px; }
+
+/* 烫豆效果预览 */
+.preview { padding: 10px 14px; }
+.preview summary { font-weight: 650; }
+.pv-main { overflow: auto; border-radius: 10px; background: #ecebe7; text-align: center; max-height: 70vh; }
+.pv-main canvas { display: inline-block; max-width: 100%; vertical-align: top; }
+.pv-cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 10px; }
+.cmp { display: grid; gap: 4px; justify-items: center; padding: 6px; font: inherit; color: var(--ink); background: var(--bg); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
+.cmp.on { border-color: var(--accent); }
+.cmp canvas { max-width: 100%; height: auto !important; border-radius: 8px; }
+.cmp .cn { font-size: 13px; font-weight: 600; }
 canvas { display: block; }
 
 .stats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }

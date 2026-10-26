@@ -5,12 +5,14 @@
 `type: service`：后端同时托管 `public/` 静态前端并代理模型调用，密钥不在浏览器里。
 
 ```
-public/palettes.js   色板数据（通用色板，编号是占位，见下）
+public/palettes.js   通用色板（编号是占位）+ 合并品牌色板
+public/palettes-brands.js  品牌色号数据（由 tools/build_brand_palettes.py 生成，勿手改）
 public/quantize.js   颜色处理核心：Lab 最近色、限制用色数、抖动、亮度/对比度/饱和度（纯函数，可测试）
-public/render.js     canvas 绘制（预览与导出共用）
+public/render.js     canvas 绘制（图纸、导出、烫豆效果预览共用）
 public/app.js        界面与状态（含 AI 绘图面板）
 backend/pindou/      main / api / ark（火山方舟客户端）/ quota（每日次数）/ config
-tests/               node --test tests/quantize.test.js
+tools/               build_brand_palettes.py：从 pypindou 的 palettes.json 重新生成品牌色号
+tests/               node --test tests/*.test.js
 backend/tests/       cd backend && python -m unittest discover -s tests -t .
 ```
 
@@ -18,6 +20,37 @@ backend/tests/       cd backend && python -m unittest discover -s tests -t .
 
 配置项：图片适配（裁剪/留空/拉伸）、宽高与锁定比例、色板、最多用色数、抖动、透明留空、亮度/对比度/饱和度、豆子样式、缩放、网格、色号、加粗线间隔、拼板分割线。
 工具：查看（点格子高亮同色）/ 画笔 / 橡皮。手动修改后再改配置不会自动覆盖，需点“重新生成”。
+
+## 缩放与拖动
+
+| | 缩放 | 移动 |
+|---|---|---|
+| 电脑 | 鼠标滚轮（以光标为中心）、右下角 ＋ / － / 适应、显示设置里的缩放滑条 | 查看模式直接拖动；画笔/橡皮模式下按住空格（或鼠标中键）再拖动 |
+| 手机/平板 | 双指捏合 | 查看模式单指拖动；画笔/橡皮模式单指涂画、双指移动 |
+
+查看模式下轻点（不拖动）仍是“高亮同色”。缩放范围 4–64 像素/格，格子很多时上限会自动降低，避免画布过大。
+
+## 烫豆效果预览
+
+图纸下方的“烫豆效果预览”把同一份图纸画成熨烫后的样子，并排对比五种常见效果（点缩略图切换上方整体预览，可导出效果图 PNG）：
+
+| 效果 | 特点 |
+|---|---|
+| 未烫 | 圆豆带孔，还没熨烫 |
+| 微烫 | 刚刚贴合，孔还在 |
+| 烫平 | 平整的方块，孔几乎闭合 |
+| 重烫 | 熔合无缝，不同颜色交界处柔和过渡 |
+| 成品质感 | 烫平 + 光泽与投影 |
+
+只是示意：真实效果取决于豆子品牌、温度和熨烫时间。对比小图自动挑选整张图里颜色最丰富的 8×8 区域，差别最明显。
+
+## 品牌色号
+
+“色板 / 品牌色号”下拉分三组：通用（本应用的占位编号）、国内品牌（MARD 221/291 色、COCO、漫漫、盼盼、咪小窝、优肯 Artkal C）、国际品牌（Perler、Hama Midi、Artkal S、Nabbi）。选了品牌后，图纸里的色号、用量清单、导出的 PNG 都用该品牌的真实色号。
+
+数据来自开源项目 [pypindou](https://github.com/HansBug/pypindou) 汇总的两个 MIT 数据源，署名与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。已排除“无法确认真实色号”（盼盼/咪小窝各 4 个）和特殊材质色（夜光、闪粉、透明/半透明、珠光、金属，以及优肯 C 系的 CG/CP/CT 系列）——它们的显示色只是示意，而且常常接近白色，会抢走白色背景；neon / 荧光色是正常鲜艳色，保留。MARD 有两套：“MARD 221 色”经两个来源交叉核对，“MARD 全系列 291 色”只有单一来源、个别色号（如 H1/H2）与 221 版不一致，界面会提示。**屏幕颜色与实物有色差**，下单前请对照实物色卡。
+
+要增删品牌：改 `tools/build_brand_palettes.py` 里的 `PICK`，取得 pypindou 的 `pypindou/resources/palettes.json` 后运行 `python tools/build_brand_palettes.py <palettes.json>`，提交生成的 `public/palettes-brands.js`。
 
 ## AI 绘图
 
@@ -61,7 +94,7 @@ read -rs K; printf 'ARK_API_KEY=%s\n' "$K" | scripts/deploy.sh secret pindou; un
 
 本地开发：`ARK_API_KEY=... APP_DATA=/tmp/pindou uvicorn pindou.main:app --port 8720`（在 `backend/` 下）。
 
-## 换成真实品牌色卡
+## 自定义色卡
 
-`palettes.js` 里的颜色是按常见色系估的近似值，编号 `P01…` 是本应用的占位编号，**不对应任何品牌色号**。
-用自己手里那套豆子：在 `palettes.js` 的 `palettes` 数组里按同样结构新增一项（`code` / `name` / `hex`），界面的“色板”下拉会自动出现，用量清单会按你的真实编号显示。
+通用色板里的颜色是按常见色系估的近似值，编号 `P01…` 是占位编号，**不对应任何品牌色号**。
+要加自己的一套：在 `palettes.js` 的 `palettes` 数组里按同样结构新增一项（`id` / `group` / `name` / `colors: [{code, name, hex, label}]`），界面的下拉会自动出现。
