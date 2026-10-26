@@ -17,7 +17,7 @@
 </header>
 
 <main class="split">
-  <!-- 左：参考图（上传、AI 生图） -->
+  <!-- 左：当前参考图与 AI -->
   <section class="side ref" aria-label="参考图">
     <h2 class="side-title">参考图</h2>
 
@@ -29,25 +29,24 @@
       <input id="file" type="file" accept="image/*" hidden>
       <div class="row">
         <button id="b-pick" class="btn ghost small" type="button">选择图片</button>
-        <button id="b-clear-img" class="btn ghost small" type="button" hidden>移除图片</button>
+        <button id="b-clear-img" class="btn ghost small" type="button" hidden>清除当前图片</button>
       </div>
       <p class="hint" id="img-info"></p>
     </div>
 
     <div class="card chat">
       <div class="chat-head">
-        <h3>AI 生图</h3>
+        <h3>AI</h3>
         <label class="inline">模型
           <select id="ai-preset"><option value="">速度优先</option></select>
         </label>
       </div>
-      <p id="ai-models" class="hint"></p>
       <ul id="chat-log" class="chat-log" aria-live="polite"></ul>
       <p id="ai-status" class="hint"></p>
       <textarea id="ai-text" rows="3" maxlength="500" placeholder="例如：一只戴红围巾的橘猫，可爱简洁；或：把背景改成蓝色"></textarea>
       <div class="ai-actions">
         <button id="ai-gen" class="btn primary small" type="button">生成新图</button>
-        <button id="ai-edit" class="btn ghost small" type="button">修改参考图</button>
+        <button id="ai-edit" class="btn primary small" type="button" hidden>修改当前图片</button>
       </div>
     </div>
   </section>

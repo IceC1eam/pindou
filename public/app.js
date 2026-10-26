@@ -231,6 +231,8 @@
   // ---------- 图片输入 ----------
   async function loadFile(file) {
     if (!file) return;
+    if (ai.busy) return toast("AI 正在处理，请完成后再更换参考图", true);
+    if (state.img) return toast("请先清除当前图片，再上传另一张参考图", true);
     if (!file.type.startsWith("image/")) return toast("请选择图片文件", true);
     if (file.size > MAX_FILE) return toast("图片超过 15 MB，请先缩小", true);
     if (state.edited && !confirm("当前图纸有手动修改，载入新图片会丢弃它们。继续？")) return;
@@ -258,16 +260,20 @@
   }
 
   function clearImage() {
+    if (ai.busy) return toast("AI 正在处理，请稍后清除当前图片", true);
     if (state.edited && !confirm("当前图纸有手动修改，移除图片会清空画布。继续？")) return;
     clearToBlank();
   }
 
   function showImgInfo() {
     const has = !!state.img;
+    $("b-pick").hidden = has;
     $("b-clear-img").hidden = !has;
+    $("drop").classList.toggle("has-image", has);
+    $("ai-text").placeholder = has ? "例如：把当前图片的背景改成蓝色" : "例如：一只戴红围巾的橘猫，可爱简洁";
     $("img-info").textContent = has
-      ? `${state.img.name} · ${state.img.w}×${state.img.h}。普通处理只在本机浏览器里进行；仅使用 AI 修改时才会上传。`
-      : "不选图片则从空白画布开始手动绘制。普通处理只在本机浏览器里进行；仅使用 AI 修改时才会上传。";
+      ? `${state.img.name} · ${state.img.w}×${state.img.h}`
+      : "不选图片则从空白画布开始手动绘制。";
     drawRef();
     updateAiUi();
   }
@@ -284,11 +290,10 @@
     g.drawImage(state.img.el, 0, 0, c.width, c.height);
   }
 
-  // ---------- AI 生图聊天（服务端代理火山方舟；密钥不在浏览器里） ----------
+  // ---------- AI（服务端代理火山方舟；密钥不在浏览器里） ----------
   const ai = { enabled: false, remaining: 0, busy: "", presets: [] };
   const PRESET_KEY = "pindou.ai.preset";
-  const MAX_CHAT_IMAGES = 12;                // 聊天里最多保留这么多张结果图，更早的只留文字，省内存
-  const chat = [];                           // {role:"user"|"ai"|"err", ...}
+  const chat = [];                           // 只保留文字记录，图片始终只有 state.img 一张
   const preset = () => $("ai-preset").value || undefined;
   const mk = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -298,17 +303,21 @@
   };
 
   function updateAiUi() {
-    const off = !ai.enabled || !!ai.busy;
+    const off = !ai.enabled || !!ai.busy || ai.remaining <= 0;
+    const has = !!state.img;
+    $("ai-gen").hidden = has;
+    $("ai-edit").hidden = !has;
     $("ai-gen").disabled = off;
-    $("ai-edit").disabled = off || !state.img;
+    $("ai-edit").disabled = off;
+    $("b-pick").disabled = !!ai.busy;
+    $("b-clear-img").disabled = !!ai.busy;
     $("ai-preset").disabled = !!ai.busy;
-    const p = ai.presets.find((x) => x.id === $("ai-preset").value);
-    $("ai-models").textContent = p ? `文本 ${p.text_model} · 图像 ${p.image_model}` : "";
     const st = $("ai-status");
     st.classList.remove("bad");
     if (ai.busy) st.textContent = ai.busy;
     else if (!ai.enabled) { st.textContent = "AI 功能尚未启用（服务器还没有配置密钥）。"; st.classList.add("bad"); }
-    else st.textContent = `今日还可出图 ${ai.remaining} 次` + (state.img ? "" : "。“修改参考图”需要先有一张图片");
+    else st.textContent = ai.remaining < 10 ? `今日还可出图 ${ai.remaining} 次` : "";
+    st.hidden = !st.textContent;
     renderChat();
   }
 
@@ -319,28 +328,7 @@
       return li;
     }
     if (m.role === "err") { li.append(mk("div", "bubble", m.text)); return li; }
-    const bubble = mk("div", "bubble");
-    if (m.text) bubble.append(mk("p", null, m.text));
-    if (m.el) {
-      const current = !!state.img && state.img.el === m.el;
-      const thumb = mk("button", "thumb" + (current ? " on" : ""));
-      thumb.type = "button";
-      thumb.title = current ? "当前参考图" : "设为参考图";
-      const im = mk("img"); im.src = m.url; im.alt = "AI 结果";
-      thumb.append(im, mk("span", "cap", current ? "当前参考图" : "设为参考图"));
-      thumb.addEventListener("click", () => adoptChatImage(m));
-      bubble.append(thumb);
-    } else bubble.append(mk("p", "hint", "（较早的结果图已清理）"));
-    const d = mk("details", "prompt");
-    d.append(mk("summary", null, "提示词（可改后重画）"));
-    const ta = mk("textarea"); ta.rows = 4; ta.maxLength = 1500; ta.value = m.prompt;
-    ta.addEventListener("input", () => { m.prompt = ta.value; });
-    const redo = mk("button", "btn ghost small", "用此提示词重画");
-    redo.type = "button"; redo.disabled = !ai.enabled || !!ai.busy;
-    redo.addEventListener("click", () => aiRedo(m));
-    d.append(ta, redo);
-    bubble.append(d);
-    li.append(bubble);
+    li.append(mk("div", "bubble", m.text || "已更新当前参考图。"));
     return li;
   }
 
@@ -396,7 +384,7 @@
     return c.toDataURL("image/jpeg", 0.92);
   }
 
-  /** base：修改时作为底图的那张参考图（重画时要用当初那张，而不是当前参考图）。 */
+  /** 修改只使用当前参考图作为底图；完成后直接替换它。 */
   async function aiDraw(mode, plan, base, reply) {
     setAiBusy("正在画图，通常需要 10–40 秒…");
     const body = { mode, prompt: plan.prompt, ratio: plan.ratio || "1:1", preset: preset() };
@@ -412,10 +400,7 @@
       if (plan.max_colors) cfg.maxColors = Math.min(plan.max_colors, currentPalette().length);
     }
     const name = mode === "edit" ? "AI 修改的图片" : "AI 生成的图片";
-    chat.push({ role: "ai", mode, text: reply || "", prompt: plan.prompt, ratio: plan.ratio || "1:1",
-      base: mode === "edit" ? base : null, url: res.image, el, name });
-    chat.filter((m) => m.role === "ai" && m.el).slice(0, -MAX_CHAT_IMAGES)
-      .forEach((m) => { m.el = null; m.url = null; m.base = null; });
+    chat.push({ role: "ai", text: reply || "已更新当前参考图。" });
     useImage(el, name);
   }
 
@@ -423,9 +408,10 @@
 
   async function aiRun(mode) {
     if (ai.busy) return;
+    if (mode === "generate" && state.img) return toast("请先清除当前图片，再生成新图", true);
+    if (mode === "edit" && !state.img) return toast("请先上传或生成一张参考图", true);
     const text = $("ai-text").value.trim();
     if (!text) return toast("先描述一下你想要的内容", true);
-    if (mode === "edit" && !state.img) return toast("没有可修改的图片：先生成或载入一张", true);
     if (!confirmReplace()) return;
     const base = state.img;
     chat.push({ role: "user", mode, text });
@@ -438,23 +424,6 @@
       aiFail(e);
       if (!$("ai-text").value) $("ai-text").value = text;     // 失败了把话还给用户，方便重试
     } finally { setAiBusy(""); }
-  }
-
-  async function aiRedo(m) {
-    if (ai.busy) return;
-    const prompt = m.prompt.trim();
-    if (!prompt) return toast("提示词不能为空", true);
-    if (m.mode === "edit" && !m.base) return toast("当初的底图已清理，无法重画", true);
-    if (!confirmReplace()) return;
-    try { await aiDraw(m.mode, { prompt, ratio: m.ratio }, m.base, "按修改后的提示词重画。"); }
-    catch (e) { aiFail(e); }
-    finally { setAiBusy(""); }
-  }
-
-  function adoptChatImage(m) {
-    if (!m.el || (state.img && state.img.el === m.el)) return;
-    if (!confirmReplace()) return;
-    useImage(m.el, m.name);
   }
 
   function clearToBlank() {
@@ -885,7 +854,7 @@
   $("t-erase").addEventListener("click", () => setTool("erase"));
 
   const drop = $("drop");
-  for (const t of ["dragenter", "dragover"]) drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); });
+  for (const t of ["dragenter", "dragover"]) drop.addEventListener(t, (e) => { e.preventDefault(); if (!state.img && !ai.busy) drop.classList.add("over"); });
   for (const t of ["dragleave", "drop"]) drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); });
   drop.addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
   document.addEventListener("paste", (e) => {
