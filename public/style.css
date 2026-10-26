@@ -46,6 +46,11 @@ input[type=range] { display: block; width: 100%; margin: 6px 0 0; accent-color: 
 label.check { display: flex; gap: 8px; align-items: flex-start; }
 label.check input { margin-top: 5px; accent-color: var(--accent); }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+textarea { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; font: inherit; line-height: 1.45; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; resize: vertical; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ai-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.ai-actions .btn { justify-content: center; }
+#ai-status.bad { color: var(--bad); }
 .drop { border: 1.5px dashed var(--line); border-radius: 12px; padding: 10px; margin-bottom: 10px; }
 .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .drop .hint { margin: 8px 0 0; }

@@ -19,13 +19,39 @@
 <main class="layout">
   <!-- 配置 -->
   <aside class="panel">
+    <details open id="ai">
+      <summary>AI 绘图</summary>
+      <label>想要什么 / 想怎么改
+        <textarea id="ai-text" rows="3" maxlength="500" placeholder="例如：一只戴红围巾的橘猫，可爱简洁；或：把背景改成蓝色"></textarea>
+      </label>
+      <label>质量档位
+        <select id="ai-preset"><option value="">速度优先</option></select>
+      </label>
+      <div class="ai-actions">
+        <button id="ai-gen" class="btn primary small" type="button">AI 生成图片</button>
+        <button id="ai-edit" class="btn ghost small" type="button">修改当前图片</button>
+      </div>
+      <p id="ai-status" class="hint"></p>
+      <div id="ai-more" hidden>
+        <label>提示词（可修改后重画）
+          <textarea id="ai-prompt" rows="4" maxlength="1500"></textarea>
+        </label>
+        <p id="ai-reply" class="hint"></p>
+        <div class="ai-actions">
+          <button id="ai-redo" class="btn ghost small" type="button">用此提示词重画</button>
+          <button id="ai-undo" class="btn ghost small" type="button" hidden>回到上一张</button>
+        </div>
+      </div>
+      <p class="hint">由火山方舟的 Seedream 出图，画的是普通插画；转成豆子格由本应用固定的取色流程完成，不让模型画像素。你的描述和需要修改的当前图片会发送给火山引擎。</p>
+    </details>
+
     <details open>
       <summary>参考图片（可选）</summary>
       <div id="drop" class="drop">
         <input id="file" type="file" accept="image/*" hidden>
         <button id="b-pick" class="btn ghost small" type="button">选择图片</button>
         <button id="b-clear-img" class="btn ghost small" type="button" hidden>移除图片</button>
-        <p class="hint" id="img-info">也可以拖放到这里。不选图片则从空白画布开始手动绘制。图片只在本机浏览器里处理，不会上传。</p>
+        <p class="hint" id="img-info">也可以拖放到这里。不选图片则从空白画布开始手动绘制。普通处理只在本机浏览器里进行；仅使用上面的 AI 修改时才会上传。</p>
       </div>
       <label>图片适配方式
         <select id="c-fit">

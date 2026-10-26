@@ -2,6 +2,7 @@
   "use strict";
   const Core = PindouCore, Pal = PindouPalettes, R = PindouRender;
   const $ = (id) => document.getElementById(id);
+  const show = (id, on) => { $(id).hidden = !on; };
   const LS_KEY = "pindou.config.v1";
   const MIN_SIDE = 5, MAX_SIDE = 100, MAX_FILE = 15 * 1024 * 1024;
 
@@ -37,6 +38,26 @@
     edited: false, stale: false,
     tool: "view", brush: -1, highlight: -1,
   };
+
+  // 应用挂在 /pindou/ 下：一律用相对路径；写请求带 X-Requested-With（网关的 CSRF 约定）
+  async function api(path, opts = {}) {
+    const init = { method: opts.method || "GET", credentials: "same-origin", headers: {} };
+    if (init.method !== "GET") init.headers["X-Requested-With"] = "portal";
+    if (opts.body) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(opts.body);
+    }
+    let r;
+    try { r = await fetch(path.replace(/^\//, ""), init); }
+    catch { throw { status: 0, kind: "network", message: "无法连接服务器" }; }
+    let data = {};
+    try { data = await r.json(); } catch { /* 非 JSON */ }
+    if (!r.ok) {
+      const e = data.error || {};
+      throw { status: r.status, kind: e.kind || "http", message: e.message || "请求失败（" + r.status + "）" };
+    }
+    return data;
+  }
 
   function toast(msg, bad) {
     const t = $("toast");
@@ -201,17 +222,23 @@
     if (file.size > MAX_FILE) return toast("图片超过 15 MB，请先缩小", true);
     if (state.edited && !confirm("当前图纸有手动修改，载入新图片会丢弃它们。继续？")) return;
     const url = URL.createObjectURL(file);
+    let el;
     try {
-      const el = new Image();
+      el = new Image();
       el.src = url;
       await el.decode();
       if (!el.naturalWidth || !el.naturalHeight) throw new Error("no size");
-      state.img = { el, w: el.naturalWidth, h: el.naturalHeight, name: file.name };
     } catch {
       return toast("无法读取这张图片", true);
     } finally {
       URL.revokeObjectURL(url);
     }
+    useImage(el, file.name);
+  }
+
+  /** 采用一张已解码的图片作为源图（本地选择或 AI 结果共用）。 */
+  function useImage(el, name) {
+    state.img = { el, w: el.naturalWidth, h: el.naturalHeight, name };
     if (cfg.lock) cfg.height = clampSide(cfg.width * state.img.h / state.img.w);
     writeControls(); saveCfg(); showImgInfo();
     regenerate();
@@ -219,16 +246,138 @@
 
   function clearImage() {
     if (state.edited && !confirm("当前图纸有手动修改，移除图片会清空画布。继续？")) return;
-    state.img = null; $("file").value = "";
-    showImgInfo(); regenerate();
+    clearToBlank();
   }
 
   function showImgInfo() {
     const has = !!state.img;
     $("b-clear-img").hidden = !has;
     $("img-info").textContent = has
-      ? `${state.img.name} · ${state.img.w}×${state.img.h}。图片只在本机浏览器里处理，不会上传。`
-      : "也可以拖放到这里或直接粘贴。不选图片则从空白画布开始手动绘制。图片只在本机浏览器里处理，不会上传。";
+      ? `${state.img.name} · ${state.img.w}×${state.img.h}。普通处理只在本机浏览器里进行；仅使用 AI 修改时才会上传。`
+      : "也可以拖放到这里或直接粘贴。不选图片则从空白画布开始手动绘制。普通处理只在本机浏览器里进行；仅使用 AI 修改时才会上传。";
+    updateAiUi();
+  }
+
+  // ---------- AI 绘图（服务端代理火山方舟 Seedream；密钥不在浏览器里） ----------
+  const ai = { enabled: false, remaining: 0, busy: "", prev: null, mode: "generate", ratio: "1:1" };
+  const PRESET_KEY = "pindou.ai.preset";
+  const preset = () => $("ai-preset").value || undefined;
+
+  function updateAiUi() {
+    const off = !ai.enabled || !!ai.busy;
+    $("ai-gen").disabled = off;
+    $("ai-edit").disabled = off || !state.img;
+    $("ai-redo").disabled = off;
+    $("ai-undo").hidden = !ai.prev;
+    const st = $("ai-status");
+    st.classList.remove("bad");
+    if (ai.busy) st.textContent = ai.busy;
+    else if (!ai.enabled) { st.textContent = "AI 功能尚未启用（服务器还没有配置密钥）。"; st.classList.add("bad"); }
+    else st.textContent = `今日还可出图 ${ai.remaining} 次` + (state.img ? "" : "。修改功能需要先有一张图片");
+  }
+
+  function toLogin() { location.href = "/?next=" + encodeURIComponent(location.pathname); }
+
+  async function loadAiStatus() {
+    try {
+      const s = await api("api/ai/status");
+      ai.enabled = s.enabled; ai.remaining = s.remaining;
+      let saved = "";
+      try { saved = localStorage.getItem(PRESET_KEY) || ""; } catch { /* 隐私模式等 */ }
+      const sel = $("ai-preset");
+      sel.replaceChildren(...s.presets.map((p) => {
+        const o = document.createElement("option");
+        o.value = p.id; o.textContent = p.label + (p.id === s.default_preset ? "（默认）" : "");
+        return o;
+      }));
+      sel.value = s.presets.some((p) => p.id === saved) ? saved : s.default_preset;
+    } catch (e) {
+      if (e.status === 401) return toLogin();
+      ai.enabled = false;
+    }
+    updateAiUi();
+  }
+
+  function setAiBusy(msg) { ai.busy = msg || ""; updateAiUi(); }
+
+  function aiFail(e) {
+    if (e.status === 401) return toLogin();
+    toast(e.message, true);
+    if (e.kind === "quota") ai.remaining = 0;
+  }
+
+  /** 把当前源图缩到 1536 以内、白底铺平后转 JPEG，作为“待修改”的图片发给服务端。 */
+  function sourceDataUrl() {
+    const im = state.img, s = Math.min(1, 1536 / Math.max(im.w, im.h));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(im.w * s)); c.height = Math.max(1, Math.round(im.h * s));
+    const g = c.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(im.el, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.92);
+  }
+
+  async function aiDraw(mode, plan) {
+    setAiBusy("正在画图，通常需要 10–40 秒…");
+    const body = { mode, prompt: plan.prompt, ratio: plan.ratio || "1:1", preset: preset() };
+    if (mode === "edit") body.image = sourceDataUrl();
+    const res = await api("api/ai/image", { method: "POST", body });
+    ai.remaining = res.remaining;
+    const el = new Image();
+    el.src = res.image;
+    await el.decode();
+    ai.prev = { img: state.img };
+    ai.mode = mode; ai.ratio = plan.ratio || "1:1";
+    if (mode === "generate") {              // 新图：采用助理建议的尺寸与用色数；修改时保持你现有的配置
+      if (plan.width) cfg.width = clampSide(plan.width);
+      if (plan.height && !cfg.lock) cfg.height = clampSide(plan.height);
+      if (plan.max_colors) cfg.maxColors = Math.min(plan.max_colors, currentPalette().length);
+    }
+    useImage(el, mode === "edit" ? "AI 修改的图片" : "AI 生成的图片");
+  }
+
+  function confirmReplace() {
+    return !state.edited || confirm("当前图纸有手动修改，AI 出图会替换它们。继续？");
+  }
+
+  async function aiRun(mode) {
+    if (ai.busy) return;
+    const text = $("ai-text").value.trim();
+    if (!text) return toast("先描述一下你想要的内容", true);
+    if (mode === "edit" && !state.img) return toast("没有可修改的图片：先生成或载入一张", true);
+    if (!confirmReplace()) return;
+    try {
+      setAiBusy("正在理解你的需求…");
+      const plan = await api("api/ai/plan", { method: "POST", body: { text, mode, preset: preset() } });
+      $("ai-prompt").value = plan.prompt;
+      $("ai-reply").textContent = plan.reply || "";
+      show("ai-more", true);
+      await aiDraw(mode, plan);
+    } catch (e) { aiFail(e); }
+    finally { setAiBusy(""); }
+  }
+
+  async function aiRedo() {
+    if (ai.busy) return;
+    const prompt = $("ai-prompt").value.trim();
+    if (!prompt) return toast("提示词不能为空", true);
+    if (ai.mode === "edit" && !state.img) return toast("没有可修改的图片", true);
+    if (!confirmReplace()) return;
+    try { await aiDraw(ai.mode, { prompt, ratio: ai.ratio }); }
+    catch (e) { aiFail(e); }
+    finally { setAiBusy(""); }
+  }
+
+  function aiUndo() {
+    if (!ai.prev) return;
+    const back = ai.prev.img;
+    ai.prev = null;
+    if (back) useImage(back.el, back.name); else clearToBlank();
+  }
+
+  function clearToBlank() {
+    state.img = null; $("file").value = "";
+    showImgInfo(); regenerate();
   }
 
   // ---------- 绘制 ----------
@@ -403,6 +552,13 @@
     regenerate();
   });
   $("b-export").addEventListener("click", exportPng);
+  $("ai-gen").addEventListener("click", () => aiRun("generate"));
+  $("ai-edit").addEventListener("click", () => aiRun("edit"));
+  $("ai-redo").addEventListener("click", aiRedo);
+  $("ai-preset").addEventListener("change", () => {
+    try { localStorage.setItem(PRESET_KEY, $("ai-preset").value); } catch { /* 隐私模式等 */ }
+  });
+  $("ai-undo").addEventListener("click", aiUndo);
   $("t-view").addEventListener("click", () => setTool("view"));
   $("t-pen").addEventListener("click", () => setTool("pen"));
   $("t-erase").addEventListener("click", () => setTool("erase"));
@@ -423,4 +579,5 @@
   showImgInfo();
   setTool("view");
   regenerate();
+  loadAiStatus();
 })();

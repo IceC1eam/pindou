@@ -1,14 +1,19 @@
 {
   "id": "pindou",
   "name": "拼豆图纸",
-  "description": "上传参考图或空白起稿，生成拼豆图纸与用量清单",
+  "description": "上传参考图或 AI 生成，转成拼豆图纸与用量清单",
   "icon": "🟣",
   "color": "#9a5fc4",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "order": 20,
-  "type": "static",
+  "type": "service",
   "public": false,
-  "static": {
-    "root": "public"
+  "max_body": "8m",
+  "service": {
+    "port": 8720,
+    "health": "/healthz",
+    "workdir": "backend",
+    "requirements": "backend/requirements.txt",
+    "command": "uvicorn pindou.main:app --host 127.0.0.1 --port {port} --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-server-header"
   }
 }
