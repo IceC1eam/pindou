@@ -123,6 +123,17 @@ canvas { -webkit-user-select: none; user-select: none; }
 .zoom-ctl output { min-width: 52px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .zoom-tip { margin: 6px 2px 12px; }
 
+/* 导出图纸 */
+.export-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.export-fields input[type=text] { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.export-contents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; margin: 0 0 12px; padding: 8px 12px 0; border: 1px solid var(--line); border-radius: 10px; }
+.export-contents legend { padding: 0 5px; font-size: 14px; font-weight: 600; }
+.export-contents label { margin-bottom: 6px; }
+.export-preview { max-height: 350px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.export-preview canvas { display: block; width: 100%; height: auto; }
+.export-box #ex-note { margin: 8px 0; }
+@media (max-width: 520px) { .export-fields, .export-contents { grid-template-columns: 1fr; } }
+
 /* 烫豆效果预览 */
 .preview { padding: 10px 14px; }
 .preview summary { font-weight: 650; }

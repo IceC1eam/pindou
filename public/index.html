@@ -13,7 +13,6 @@
 <header class="top">
   <a class="btn ghost small" href="/">‹ 入口</a>
   <h1>拼豆图纸</h1>
-  <button id="b-export" class="btn primary small" type="button">导出 PNG</button>
 </header>
 
 <main class="split">
@@ -146,6 +145,27 @@
     </div>
     <p class="hint zoom-tip">滚轮缩放、拖动移动；画笔/橡皮模式下按住空格再拖动；触屏用双指缩放和移动。</p>
 
+    <details id="export-box" class="card export-box" open>
+      <summary>导出图纸</summary>
+      <div class="export-fields">
+        <label>图纸标题<input id="ex-title" type="text" maxlength="80" placeholder="留空则不显示标题" value="拼豆图纸"></label>
+        <label>水印文字<input id="ex-watermark" type="text" maxlength="80" placeholder="留空则不添加水印"></label>
+        <label>水印透明度 <output id="ex-opacity-value">12%</output><input id="ex-opacity" type="range" min="5" max="40" value="12"></label>
+        <label>导出格式<select id="ex-format"><option value="png">PNG · 无损图片</option><option value="jpeg">JPEG · 较小文件</option><option value="webp">WebP · 较小文件</option><option value="pdf">PDF · 打印分享</option></select></label>
+      </div>
+      <fieldset class="export-contents"><legend>图纸内容</legend>
+        <label class="check"><input id="ex-codes" type="checkbox" checked><span>豆子色号</span></label>
+        <label class="check"><input id="ex-grid" type="checkbox" checked><span>网格与坐标</span></label>
+        <label class="check"><input id="ex-board" type="checkbox" checked><span>拼板分割线</span></label>
+        <label class="check"><input id="ex-summary" type="checkbox" checked><span>尺寸与总颗数</span></label>
+        <label class="check"><input id="ex-legend" type="checkbox" checked><span>颜色用量清单</span></label>
+        <label class="check"><input id="ex-reference" type="checkbox"><span>参考图（如有）</span></label>
+      </fieldset>
+      <div class="export-preview"><canvas id="ex-preview" aria-label="导出图纸预览"></canvas></div>
+      <p id="ex-note" class="hint">预览与下载使用相同的内容配置。</p>
+      <button id="ex-download" class="btn primary" type="button" disabled>下载图纸</button>
+    </details>
+
     <details id="pv-box" class="card preview" open>
       <summary>烫豆效果预览 <span id="pv-note" class="hint"></span></summary>
       <p id="pv-empty" class="hint" hidden>图纸还是空的，放几颗豆子后这里会显示熨烫后的样子。</p>
@@ -177,6 +197,7 @@
 <script src="palettes.js"></script>
 <script src="quantize.js"></script>
 <script src="render.js"></script>
+<script src="export.js"></script>
 <script src="reference.js"></script>
 <script src="scene.js"></script>
 <script src="app.js"></script>

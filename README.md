@@ -1,6 +1,6 @@
 # pindou — 拼豆图纸
 
-选一张参考图（可选）、用 AI 生成，或从空白画布开始，按配置生成拼豆图纸，导出 PNG（含用量清单）。图片处理（取色、量化、绘制）都在浏览器里完成；只有使用 **AI 绘图** 时，描述（修改时还有当前图片）才会经本应用后端发给火山引擎。
+选一张参考图（可选）、用 AI 生成，或从空白画布开始，按配置生成拼豆图纸。导出面板可设置标题、水印、图纸内容和 PNG、JPEG、WebP、PDF 格式。图片处理（取色、量化、绘制）都在浏览器里完成；只有使用 **AI 绘图** 时，描述（修改时还有当前图片）才会经本应用后端发给火山引擎。
 
 `type: service`：后端同时托管 `public/` 静态前端并代理模型调用，密钥不在浏览器里。
 
@@ -9,6 +9,7 @@ public/palettes.js   通用色板（编号是占位）+ 合并品牌色板
 public/palettes-brands.js  品牌色号数据（由 tools/build_brand_palettes.py 生成，勿手改）
 public/quantize.js   颜色处理核心：Lab 最近色、限制用色数、抖动、亮度/对比度/饱和度（纯函数，可测试）
 public/render.js     canvas 绘制（图纸、导出、烫豆表面贴图共用）
+public/export.js     导出图纸排版与浏览器内 PDF 生成
 public/reference.js  参考图裁剪选区、边缘色度键和边缘主色取样
 public/scene.js      桌面成品的正交投影、厚度、光影与镜头视角
 public/app.js        界面与状态（含 AI 绘图面板）

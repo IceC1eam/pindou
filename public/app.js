@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender, Ref = PindouReference, Scene = PindouScene;
+  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender, Ref = PindouReference, Scene = PindouScene, Export = PindouExport;
   const $ = (id) => document.getElementById(id);
   const show = (id, on) => { $(id).hidden = !on; };
   const LS_KEY = "pindou.config.v1";
@@ -137,7 +137,7 @@
     if (k === "palette") syncMaxColorsRange();
     writeControls();
     saveCfg();
-    if (GEN_KEYS.has(k)) configChanged(k); else redraw();
+    if (GEN_KEYS.has(k)) configChanged(k); else { redraw(); scheduleExport(); }
   }
 
   // ---------- 生成 ----------
@@ -672,6 +672,7 @@
     $("total").textContent = t;
     $("info").textContent = `${state.W} × ${state.H}`;
     schedulePreview();
+    scheduleExport();
   }
 
   function setHighlight(idx) {
@@ -1005,33 +1006,75 @@
     }, "image/png");
   }
 
-  // ---------- 导出 ----------
-  function exportPng() {
+  // ---------- 导出图纸 ----------
+  const EX_KEY = "pindou.export.v1";
+  const EX_DEFAULTS = { title: "拼豆图纸", watermark: "", opacity: 12, format: "png",
+    codes: true, grid: true, board: true, summary: true, legend: true, reference: false };
+  const exCanvas = $("ex-preview");
+  let exTimer = 0;
+  function loadExportCfg() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(EX_KEY) || "{}"); } catch { /* 不可用时采用默认值 */ }
+    for (const [key, def] of Object.entries(EX_DEFAULTS)) {
+      const el = $("ex-" + key);
+      const value = typeof saved[key] === typeof def ? saved[key] : def;
+      if (el.type === "checkbox") el.checked = value; else el.value = String(value);
+    }
+    updateExportOpacity();
+  }
+  function exportCfg() {
+    const out = {};
+    for (const key of Object.keys(EX_DEFAULTS)) {
+      const el = $("ex-" + key);
+      out[key] = el.type === "checkbox" ? el.checked : key === "opacity" ? Number(el.value) : el.value;
+    }
+    return out;
+  }
+  function updateExportOpacity() { $("ex-opacity-value").textContent = $("ex-opacity").value + "%"; }
+  function scheduleExport() { clearTimeout(exTimer); exTimer = setTimeout(renderExport, 120); }
+  function renderExport() {
     if (!state.grid) return;
     const s = Core.summarize(state.grid, state.palette.length);
-    if (!s.total) return toast("图纸是空的，先放一些豆子", true);
-    const cell = 32;
-    const sz = R.patternSize(state.W, state.H, cell, true);
+    $("ex-download").disabled = !s.total;
+    $("ex-note").textContent = s.total ? "预览与下载使用相同的内容配置。" : "图纸还是空的，放几颗豆子后即可导出。";
+    if (!s.total || !$("export-box").open) return;
+    const c = exportCfg();
     const items = s.items.map((it) => ({ ...state.palette[it.index], count: it.count }));
-    const width = Math.max(sz.width, 400);
-    const lh = R.legendHeight(width, items.length);
-    const c = document.createElement("canvas");
-    c.width = width; c.height = sz.height + lh;
-    const g = c.getContext("2d");
-    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
-    R.drawPattern(g, drawOpts(cell, -1));
-    R.drawLegend(g, {
-      x: 0, y: sz.height, width, items, total: s.total, textColor: Core.textColor,
-      title: `拼豆图纸 ${state.W}×${state.H} · 共 ${s.total} 颗 · ${items.length} 色`,
+    const opts = { W: state.W, H: state.H, grid: state.grid, palette: state.palette,
+      cell: 32, style: cfg.style, emph: cfg.emph, boardSize: cfg.board,
+      textColor: Core.textColor, items, total: s.total,
+      title: c.title.trim(), watermark: c.watermark.trim(), opacity: c.opacity / 100,
+      codes: c.codes, gridLines: c.grid, board: c.board, summary: c.summary,
+      legend: c.legend, reference: c.reference && state.img ? state.img.el : null };
+    const sz = Export.sheetSize(opts);
+    exCanvas.width = sz.width; exCanvas.height = sz.height;
+    Export.drawSheet(exCanvas.getContext("2d"), opts);
+  }
+  function canvasBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      try { canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("图纸太大或格式不受支持")), type, quality); }
+      catch (e) { reject(e); }
     });
-    c.toBlob((blob) => {
-      if (!blob) return toast("导出失败：图纸太大", true);
+  }
+  async function downloadExport() {
+    if ($("ex-download").disabled) return toast("图纸是空的，先放一些豆子", true);
+    clearTimeout(exTimer);
+    renderExport();
+    const format = $("ex-format").value;
+    const mime = format === "pdf" || format === "jpeg" ? "image/jpeg" : `image/${format}`;
+    const button = $("ex-download");
+    button.disabled = true;
+    try {
+      let blob = await canvasBlob(exCanvas, mime, 0.92);
+      if (blob.type !== mime) throw new Error("当前浏览器不支持该格式");
+      if (format === "pdf") blob = Export.pdfFromJpeg(await blob.arrayBuffer(), exCanvas.width, exCanvas.height);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `pindou-${state.W}x${state.H}.png`;
+      a.href = url; a.download = `pindou-${state.W}x${state.H}.${format === "jpeg" ? "jpg" : format}`;
       document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    }, "image/png");
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) { toast("导出失败：" + (e.message || "请稍后重试"), true); }
+    finally { button.disabled = false; }
   }
 
   // ---------- 事件 ----------
@@ -1065,7 +1108,15 @@
     if (state.edited && !confirm("将丢弃手动修改并重新生成。继续？")) return;
     regenerate();
   });
-  $("b-export").addEventListener("click", exportPng);
+  for (const key of Object.keys(EX_DEFAULTS)) {
+    $("ex-" + key).addEventListener("input", () => {
+      updateExportOpacity();
+      try { localStorage.setItem(EX_KEY, JSON.stringify(exportCfg())); } catch { /* 隐私模式等 */ }
+      scheduleExport();
+    });
+  }
+  $("ex-download").addEventListener("click", downloadExport);
+  $("export-box").addEventListener("toggle", () => { if ($("export-box").open) scheduleExport(); });
   $("pv-export").addEventListener("click", exportEffect);
   $("pv-bead-size").addEventListener("change", updateScale);
   $("pv-reference").addEventListener("change", updateScale);
@@ -1093,6 +1144,7 @@
   });
 
   // ---------- 启动 ----------
+  loadExportCfg();
   initPaletteSelect();
   syncMaxColorsRange();
   writeControls();
