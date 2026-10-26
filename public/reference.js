@@ -21,6 +21,45 @@
     return { x, y, w: clamp(w, 0, 1 - x), h: clamp(h, 0, 1 - y) };
   }
 
+  /** 从四边或四角调整已有选区。另一侧保持固定；锁定比例时边缘沿另一轴居中伸缩。 */
+  function resizeCrop(rect, handle, point, ratio, imageWidth, imageHeight) {
+    const left = rect.x, top = rect.y, right = rect.x + rect.w, bottom = rect.y + rect.h;
+    const minW = Math.min(0.9, 8 / imageWidth), minH = Math.min(0.9, 8 / imageHeight);
+    const west = handle.includes("w"), east = handle.includes("e");
+    const north = handle.includes("n"), south = handle.includes("s");
+    if (!ratio) {
+      const x1 = west ? clamp(point.x, 0, right - minW) : left;
+      const x2 = east ? clamp(point.x, left + minW, 1) : right;
+      const y1 = north ? clamp(point.y, 0, bottom - minH) : top;
+      const y2 = south ? clamp(point.y, top + minH, 1) : bottom;
+      return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    }
+    const k = ratio * imageHeight / imageWidth;
+    const minWidth = Math.max(minW, minH * k);
+    if ((west || east) && (north || south)) {
+      const ax = west ? right : left, ay = north ? bottom : top;
+      const sx = west ? -1 : 1, sy = north ? -1 : 1;
+      const fromX = (point.x - ax) * sx, fromY = (point.y - ay) * sy * k;
+      const desired = Math.abs(fromX - rect.w) >= Math.abs(fromY - rect.w) ? fromX : fromY;
+      const maxWidth = Math.min(west ? ax : 1 - ax, (north ? ay : 1 - ay) * k);
+      const w = clamp(desired, Math.min(minWidth, maxWidth), maxWidth), h = w / k;
+      return { x: west ? ax - w : ax, y: north ? ay - h : ay, w, h };
+    }
+    if (west || east) {
+      const anchor = west ? right : left, cy = (top + bottom) / 2;
+      const maxWidth = Math.min(west ? anchor : 1 - anchor, 2 * Math.min(cy, 1 - cy) * k);
+      const w = clamp(west ? anchor - point.x : point.x - anchor, Math.min(minWidth, maxWidth), maxWidth);
+      const h = w / k;
+      return { x: west ? anchor - w : anchor, y: cy - h / 2, w, h };
+    }
+    const anchor = north ? bottom : top, cx = (left + right) / 2;
+    const maxHeight = Math.min(north ? anchor : 1 - anchor, 2 * Math.min(cx, 1 - cx) / k);
+    const minHeight = minWidth / k;
+    const h = clamp(north ? anchor - point.y : point.y - anchor, Math.min(minHeight, maxHeight), maxHeight);
+    const w = h * k;
+    return { x: cx - w / 2, y: north ? anchor - h : anchor, w, h };
+  }
+
   function colorFromHex(hex) {
     const m = /^#([0-9a-f]{6})$/i.exec(hex);
     if (!m) throw new TypeError("无效的颜色");
@@ -82,5 +121,5 @@
     return "#" + best.slice(1).map((v) => Math.round(v / best[0]).toString(16).padStart(2, "0")).join("");
   }
 
-  root.PindouReference = { cropRect, edgeChromaKey, dominantEdgeColor };
+  root.PindouReference = { cropRect, resizeCrop, edgeChromaKey, dominantEdgeColor };
 })(typeof self !== "undefined" ? self : this);

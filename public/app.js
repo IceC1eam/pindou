@@ -302,6 +302,13 @@
       g.fillRect(x + w, y, c.width - x - w, h); g.fillRect(0, y + h, c.width, c.height - y - h);
       g.strokeStyle = "#fff"; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2));
       g.setLineDash([6, 4]); g.strokeStyle = "#14161a"; g.lineWidth = 1; g.strokeRect(x + 3, y + 3, Math.max(0, w - 6), Math.max(0, h - 6)); g.setLineDash([]);
+      const rect = c.getBoundingClientRect(), size = 9 * c.width / Math.max(1, rect.width);
+      g.fillStyle = "#fff"; g.strokeStyle = "#7a3fb0"; g.lineWidth = Math.max(1, c.width / Math.max(1, rect.width));
+      for (const hx of [x, x + w / 2, x + w]) for (const hy of [y, y + h / 2, y + h]) {
+        if (hx === x + w / 2 && hy === y + h / 2) continue;
+        g.fillRect(hx - size / 2, hy - size / 2, size, size);
+        g.strokeRect(hx - size / 2, hy - size / 2, size, size);
+      }
     }
     $("crop-apply").disabled = !crop || crop.w * state.img.w < 8 || crop.h * state.img.h < 8;
   }
@@ -315,6 +322,7 @@
     $("drop").classList.toggle("cropping", tool === "crop");
     $("b-crop").classList.toggle("on", tool === "crop");
     $("b-key").classList.toggle("on", tool === "key");
+    $("ref-cv").style.cursor = tool === "crop" ? "crosshair" : "";
     drawRef();
   }
 
@@ -331,22 +339,59 @@
       y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
   }
 
+  function cropHandle(p, e) {
+    if (!crop) return "";
+    const r = $("ref-cv").getBoundingClientRect();
+    const reach = e.pointerType === "touch" ? 22 : 12;
+    const x = p.x * r.width, y = p.y * r.height;
+    const l = crop.x * r.width, t = crop.y * r.height;
+    const rr = (crop.x + crop.w) * r.width, b = (crop.y + crop.h) * r.height;
+    for (const [name, hx, hy] of [["nw", l, t], ["ne", rr, t], ["sw", l, b], ["se", rr, b]])
+      if (Math.hypot(x - hx, y - hy) <= reach) return name;
+    if (x >= l - reach && x <= rr + reach) {
+      if (Math.abs(y - t) <= reach) return "n";
+      if (Math.abs(y - b) <= reach) return "s";
+    }
+    if (y >= t - reach && y <= b + reach) {
+      if (Math.abs(x - l) <= reach) return "w";
+      if (Math.abs(x - rr) <= reach) return "e";
+    }
+    return "";
+  }
+
+  function cropCursor(handle, inside) {
+    if (handle === "n" || handle === "s") return "ns-resize";
+    if (handle === "e" || handle === "w") return "ew-resize";
+    if (handle === "nw" || handle === "se") return "nwse-resize";
+    if (handle === "ne" || handle === "sw") return "nesw-resize";
+    return inside ? "move" : "crosshair";
+  }
+
   function startCrop(e) {
-    if (refTool !== "crop" || !state.img || ai.busy) return;
+    if (refTool !== "crop" || !state.img || ai.busy || (e.pointerType === "mouse" && e.button !== 0)) return;
     e.preventDefault();
     const p = refPoint(e);
+    const handle = cropHandle(p, e);
     const inside = crop && p.x >= crop.x && p.x <= crop.x + crop.w && p.y >= crop.y && p.y <= crop.y + crop.h;
-    cropDrag = { start: p, before: inside ? { ...crop } : null };
-    if (!inside) crop = null;
+    cropDrag = { start: p, handle, before: handle || inside ? { ...crop } : null };
+    if (!handle && !inside) crop = null;
     $("ref-cv").setPointerCapture(e.pointerId);
+    $("ref-cv").style.cursor = cropCursor(handle, inside);
     drawRef();
   }
 
   function moveCrop(e) {
-    if (!cropDrag || !state.img) return;
+    if (refTool !== "crop" || !state.img) return;
+    if (!cropDrag) {
+      const p = refPoint(e);
+      const inside = crop && p.x >= crop.x && p.x <= crop.x + crop.w && p.y >= crop.y && p.y <= crop.y + crop.h;
+      $("ref-cv").style.cursor = cropCursor(cropHandle(p, e), inside);
+      return;
+    }
     e.preventDefault();
     const p = refPoint(e), d = cropDrag;
-    if (d.before) crop = { ...d.before,
+    if (d.handle) crop = Ref.resizeCrop(d.before, d.handle, p, cropRatio(), state.img.w, state.img.h);
+    else if (d.before) crop = { ...d.before,
       x: Math.max(0, Math.min(1 - d.before.w, d.before.x + p.x - d.start.x)),
       y: Math.max(0, Math.min(1 - d.before.h, d.before.y + p.y - d.start.y)) };
     else crop = Ref.cropRect(d.start, p, cropRatio(), state.img.w, state.img.h);
@@ -357,6 +402,7 @@
     if (!cropDrag) return;
     moveCrop(e);
     cropDrag = null;
+    moveCrop(e);
   }
 
   function applyCrop() {
@@ -982,7 +1028,7 @@
   $("ref-cv").addEventListener("pointerdown", startCrop);
   $("ref-cv").addEventListener("pointermove", moveCrop);
   $("ref-cv").addEventListener("pointerup", endCrop);
-  $("ref-cv").addEventListener("pointercancel", () => { cropDrag = null; });
+  $("ref-cv").addEventListener("pointercancel", () => { cropDrag = null; $("ref-cv").style.cursor = "crosshair"; });
   $("key-tolerance").addEventListener("input", () => { $("key-value").textContent = $("key-tolerance").value; });
   $("key-sample").addEventListener("click", sampleKeyColor);
   $("key-apply").addEventListener("click", applyKey);
