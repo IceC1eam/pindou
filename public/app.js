@@ -30,6 +30,7 @@
     return cfg;
   }
   const saveCfg = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch { /* 隐私模式等 */ } };
+  const hadSavedZoom = (() => { try { return Number.isFinite(JSON.parse(localStorage.getItem(LS_KEY) || "{}").zoom); } catch { return false; } })();
   const cfg = loadCfg();
 
   const state = {
@@ -722,6 +723,7 @@
   const clampZoom = (z) => Math.max(MIN_ZOOM, Math.min(maxZoom(), Math.round(z)));
   function clampZoomToGrid() { if (cfg.zoom > maxZoom()) { cfg.zoom = maxZoom(); writeControls(); } }
   let zf = cfg.zoom;                       // 滚轮累积用的浮点缩放（整数缩放对触控板的小步长不灵敏）
+  let autoFitEnabled = false;
 
   function updateZoomUi() {
     $("z-label").textContent = Math.round(cfg.zoom / BASE_ZOOM * 100) + "%";
@@ -745,6 +747,7 @@
   }
 
   function setZoom(z, px = wrap.clientWidth / 2, py = wrap.clientHeight / 2) {
+    autoFitEnabled = false;
     const { cx, cy } = viewCell(px, py);
     placeView(z, cx, cy, px, py);
   }
@@ -752,9 +755,11 @@
   function fitZoom() {
     const m = logical.m || 28;
     const zw = Math.floor((wrap.clientWidth - m - 10) / state.W);
-    const zh = Math.floor((window.innerHeight * 0.78 - m - 10) / state.H);   // 画布区最高 78vh；不能用它此刻的高度（缩小后会变矮）
+    const heightLimit = parseFloat(getComputedStyle(wrap).maxHeight) || window.innerHeight * 0.7;
+    const zh = Math.floor((heightLimit - m - 10) / state.H);
     placeView(Math.min(zw, zh), 0, 0, m, m);
     zf = cfg.zoom;
+    autoFitEnabled = true;
   }
 
   wrap.addEventListener("wheel", (ev) => {
@@ -825,6 +830,7 @@
     p.x = ev.clientX; p.y = ev.clientY;
     if (pinch && pts.size === 2) {
       const m = mid();
+      autoFitEnabled = false;
       placeView(pinch.z0 * m.d / pinch.d0, pinch.cx, pinch.cy, m.x, m.y);
       zf = cfg.zoom;
       return;
@@ -902,7 +908,7 @@
 
   function animateCamera(now) {
     cameraFrame = 0;
-    if (!cameraPlaying || !sceneData || !$("pv-box").open || document.hidden) return;
+    if (!cameraPlaying || !sceneData || !$("pv-box").open || !$("panel-preview").getClientRects().length || document.hidden) return;
     if (cameraLast && now - cameraLast < 32) {
       cameraFrame = requestAnimationFrame(animateCamera);
       return;
@@ -918,7 +924,7 @@
     $("pv-motion").textContent = cameraPlaying ? "暂停镜头" : "播放镜头";
     $("pv-motion").setAttribute("aria-pressed", String(!cameraPlaying));
     cancelAnimationFrame(cameraFrame); cameraFrame = 0; cameraLast = 0;
-    if (cameraPlaying && sceneData && $("pv-box").open && !document.hidden)
+    if (cameraPlaying && sceneData && $("pv-box").open && $("panel-preview").getClientRects().length && !document.hidden)
       cameraFrame = requestAnimationFrame(animateCamera);
   }
 
@@ -960,7 +966,7 @@
   }
 
   function renderPreview() {
-    if (!$("pv-box").open || !state.grid) return;
+    if (!$("pv-box").open || !$("panel-preview").getClientRects().length || !state.grid) return;
     const total = Core.summarize(state.grid, state.palette.length).total;
     show("pv-empty", !total); show("pv-body", !!total);
     if (!total) { sceneData = null; syncCamera(); return; }
@@ -1037,7 +1043,8 @@
     const s = Core.summarize(state.grid, state.palette.length);
     $("ex-download").disabled = !s.total;
     $("ex-note").textContent = s.total ? "预览与下载使用相同的内容配置。" : "图纸还是空的，放几颗豆子后即可导出。";
-    if (!s.total || !$("export-box").open) return;
+    show("ex-preview", !!s.total); show("ex-placeholder", !s.total);
+    if (!s.total || !$("export-box").open || !$("panel-export").getClientRects().length) return;
     const c = exportCfg();
     const items = s.items.map((it) => ({ ...state.palette[it.index], count: it.count }));
     const opts = { W: state.W, H: state.H, grid: state.grid, palette: state.palette,
@@ -1077,7 +1084,41 @@
     finally { button.disabled = false; }
   }
 
+  // ---------- 工作区导航 ----------
+  const VIEWS = new Set(["source", "pattern", "preview", "export"]);
+  let firstMobilePattern = true;
+  function selectView(view, trigger) {
+    if (!VIEWS.has(view)) return;
+    document.body.dataset.view = view;
+    for (const button of document.querySelectorAll(".flow-nav [data-go]")) {
+      if (button.dataset.go === view) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
+    }
+    const mobile = window.matchMedia("(max-width: 720px)").matches;
+    if (mobile) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      if (view === "pattern" && firstMobilePattern && !hadSavedZoom) {
+        firstMobilePattern = false;
+        requestAnimationFrame(() => { if (state.grid && $("wrap").clientWidth) fitZoom(); });
+      }
+      if (trigger && !trigger.closest(".flow-nav")) {
+        const heading = $("panel-" + view).querySelector("h2");
+        heading.setAttribute("tabindex", "-1");
+        heading.focus({ preventScroll: true });
+      }
+    } else {
+      $("panel-" + view).scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (view === "preview") schedulePreview();
+    if (view === "export") scheduleExport();
+    if (view === "pattern" && autoFitEnabled)
+      requestAnimationFrame(() => { if (wrap.clientWidth) fitZoom(); });
+    syncCamera();
+  }
+
   // ---------- 事件 ----------
+  for (const button of document.querySelectorAll("[data-go]"))
+    button.addEventListener("click", () => selectView(button.dataset.go, button));
   for (const k of KEYS) {
     const el = ctl(k);
     const ev = el.type === "number" ? "change" : "input";
@@ -1123,7 +1164,10 @@
   $("pv-motion").addEventListener("click", () => { cameraPlaying = !cameraPlaying; syncCamera(); });
   $("pv-box").addEventListener("toggle", () => { if ($("pv-box").open) schedulePreview(); else syncCamera(); });
   document.addEventListener("visibilitychange", syncCamera);
-  window.addEventListener("resize", schedulePreview);
+  window.addEventListener("resize", () => {
+    schedulePreview(); scheduleExport(); syncCamera();
+    if (autoFitEnabled) requestAnimationFrame(() => { if (wrap.clientWidth) fitZoom(); });
+  });
   $("ai-gen").addEventListener("click", () => aiRun("generate"));
   $("ai-edit").addEventListener("click", () => aiRun("edit"));
   $("ai-preset").addEventListener("change", () => {
@@ -1153,5 +1197,7 @@
   initPreview();
   syncCamera();
   regenerate();
+  if (!hadSavedZoom && !window.matchMedia("(max-width: 720px)").matches)
+    requestAnimationFrame(() => { if (state.grid && wrap.clientWidth) fitZoom(); });
   loadAiStatus();
 })();

@@ -9,16 +9,24 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%239a5fc4'/%3E%3Ccircle cx='10' cy='10' r='4' fill='white'/%3E%3Ccircle cx='22' cy='10' r='4' fill='white'/%3E%3Ccircle cx='10' cy='22' r='4' fill='white'/%3E%3Ccircle cx='22' cy='22' r='4' fill='white' opacity='.55'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-view="source">
 <header class="top">
-  <a class="btn ghost small" href="/">‹ 入口</a>
-  <h1>拼豆图纸</h1>
+  <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <div><span class="brand-overline">BEAD STUDIO</span><h1>拼豆图纸</h1></div>
+  </div>
+  <div class="top-actions"><span class="top-caption">从灵感到可制作的图纸</span><a class="btn ghost small" href="/">返回入口</a><button class="btn primary small top-export" type="button" data-go="export">导出图纸</button></div>
 </header>
 
-<main class="split">
-  <!-- 左：当前参考图与 AI -->
-  <section class="side ref" aria-label="参考图">
-    <h2 class="side-title">参考图</h2>
+<nav class="flow-nav" aria-label="制作流程">
+  <button type="button" data-go="source" aria-current="step"><span class="nav-index">01</span><span>参考图</span></button>
+  <button type="button" data-go="pattern"><span class="nav-index">02</span><span>图纸</span></button>
+  <button type="button" data-go="preview"><span class="nav-index">03</span><span>效果</span></button>
+  <button type="button" data-go="export"><span class="nav-index">04</span><span>导出</span></button>
+</nav>
+
+<main class="workspace">
+  <section id="panel-source" class="workspace-panel source" aria-label="参考图">
+    <div class="panel-heading"><div><span class="step-label">01 / SOURCE</span><h2>参考图</h2><p>上传图片、让 AI 创作，或直接从空白图纸开始。</p></div></div>
 
     <div class="card">
       <div id="drop" class="drop refbox">
@@ -66,13 +74,38 @@
         <button id="ai-edit" class="btn primary small" type="button" hidden>修改当前图片</button>
       </div>
     </div>
+    <button class="btn primary source-next" type="button" data-go="pattern">打开图纸 <span aria-hidden="true">→</span></button>
   </section>
 
-  <!-- 右：图纸（取色配置、画布、用量） -->
-  <section class="side pat" aria-label="图纸">
-    <h2 class="side-title">图纸</h2>
-
-    <div class="card settings">
+  <section id="panel-pattern" class="workspace-panel pattern" aria-label="图纸">
+    <div class="panel-heading pattern-heading"><div><span class="step-label">02 / PATTERN</span><h2>图纸工作区</h2><p>查看图纸，选色绘制，按需调整生成参数。</p></div><span id="info" class="size-pill"></span></div>
+    <div class="editor-main">
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="工具">
+        <button id="t-view" type="button" class="on" title="点击格子高亮同色">查看</button>
+        <button id="t-pen" type="button" title="选一个颜色后点击/拖动绘制">画笔</button>
+        <button id="t-erase" type="button" title="清除格子">橡皮</button>
+      </div>
+      <button id="b-regen" class="btn ghost small" type="button" hidden>按当前配置重新生成</button>
+    </div>
+    <p id="stale" class="note" hidden>已手动修改图纸。改动配置不会自动应用，点“按当前配置重新生成”会丢弃手动修改。</p>
+    <div id="swatches" class="swatches" hidden></div>
+    <div class="canvas-box">
+      <div id="wrap" class="canvas-wrap"><canvas id="cv"></canvas></div>
+      <div class="zoom-ctl" role="group" aria-label="缩放">
+        <button id="z-out" type="button" aria-label="缩小">−</button>
+        <output id="z-label">100%</output>
+        <button id="z-in" type="button" aria-label="放大">＋</button>
+        <button id="z-fit" type="button" title="缩放到刚好放下整张图纸">适应</button>
+      </div>
+    </div>
+    <p class="hint zoom-tip">滚轮缩放、拖动移动；画笔/橡皮模式下按住空格再拖动；触屏用双指缩放和移动。</p>
+    <div class="section-heading"><div><span class="step-label">COLOR COUNT</span><h3>用量清单</h3></div><span id="total" class="hint"></span></div>
+    <ul id="stats" class="stats"></ul>
+    </div>
+    <aside class="settings-rail" aria-label="图纸参数">
+      <div class="rail-heading"><span>图纸参数</span><span class="hint">更改取样设置会重新生成</span></div>
+      <div class="card settings">
       <details open>
         <summary>尺寸与取样</summary>
         <div class="pair">
@@ -121,51 +154,12 @@
         </label>
         <label>拼板分割线（每 N 格，0=不画）<input id="c-board" type="number" min="0" max="100" inputmode="numeric"></label>
       </details>
-    </div>
-
-    <div class="toolbar">
-      <div class="seg" role="group" aria-label="工具">
-        <button id="t-view" type="button" class="on" title="点击格子高亮同色">查看</button>
-        <button id="t-pen" type="button" title="选一个颜色后点击/拖动绘制">画笔</button>
-        <button id="t-erase" type="button" title="清除格子">橡皮</button>
       </div>
-      <button id="b-regen" class="btn ghost small" type="button" hidden>按当前配置重新生成</button>
-      <span id="info" class="hint"></span>
-    </div>
-    <p id="stale" class="note" hidden>已手动修改图纸。改动配置不会自动应用，点“按当前配置重新生成”会丢弃手动修改。</p>
-    <div id="swatches" class="swatches" hidden></div>
-    <div class="canvas-box">
-      <div id="wrap" class="canvas-wrap"><canvas id="cv"></canvas></div>
-      <div class="zoom-ctl" role="group" aria-label="缩放">
-        <button id="z-out" type="button" aria-label="缩小">−</button>
-        <output id="z-label">100%</output>
-        <button id="z-in" type="button" aria-label="放大">＋</button>
-        <button id="z-fit" type="button" title="缩放到刚好放下整张图纸">适应</button>
-      </div>
-    </div>
-    <p class="hint zoom-tip">滚轮缩放、拖动移动；画笔/橡皮模式下按住空格再拖动；触屏用双指缩放和移动。</p>
+    </aside>
+  </section>
 
-    <details id="export-box" class="card export-box" open>
-      <summary>导出图纸</summary>
-      <div class="export-fields">
-        <label>图纸标题<input id="ex-title" type="text" maxlength="80" placeholder="留空则不显示标题" value="拼豆图纸"></label>
-        <label>水印文字<input id="ex-watermark" type="text" maxlength="80" placeholder="留空则不添加水印"></label>
-        <label>水印透明度 <output id="ex-opacity-value">12%</output><input id="ex-opacity" type="range" min="5" max="40" value="12"></label>
-        <label>导出格式<select id="ex-format"><option value="png">PNG · 无损图片</option><option value="jpeg">JPEG · 较小文件</option><option value="webp">WebP · 较小文件</option><option value="pdf">PDF · 打印分享</option></select></label>
-      </div>
-      <fieldset class="export-contents"><legend>图纸内容</legend>
-        <label class="check"><input id="ex-codes" type="checkbox" checked><span>豆子色号</span></label>
-        <label class="check"><input id="ex-grid" type="checkbox" checked><span>网格与坐标</span></label>
-        <label class="check"><input id="ex-board" type="checkbox" checked><span>拼板分割线</span></label>
-        <label class="check"><input id="ex-summary" type="checkbox" checked><span>尺寸与总颗数</span></label>
-        <label class="check"><input id="ex-legend" type="checkbox" checked><span>颜色用量清单</span></label>
-        <label class="check"><input id="ex-reference" type="checkbox"><span>参考图（如有）</span></label>
-      </fieldset>
-      <div class="export-preview"><canvas id="ex-preview" aria-label="导出图纸预览"></canvas></div>
-      <p id="ex-note" class="hint">预览与下载使用相同的内容配置。</p>
-      <button id="ex-download" class="btn primary" type="button" disabled>下载图纸</button>
-    </details>
-
+  <section id="panel-preview" class="workspace-panel secondary-panel" aria-label="烫豆效果预览">
+    <div class="panel-heading"><div><span class="step-label">03 / PREVIEW</span><h2>烫豆效果</h2><p>在桌面上预览实际尺寸与不同烫法。</p></div></div>
     <details id="pv-box" class="card preview" open>
       <summary>烫豆效果预览 <span id="pv-note" class="hint"></span></summary>
       <p id="pv-empty" class="hint" hidden>图纸还是空的，放几颗豆子后这里会显示熨烫后的样子。</p>
@@ -186,9 +180,30 @@
         <button id="pv-export" class="btn ghost small" type="button">导出桌面预览 PNG</button>
       </div>
     </details>
+  </section>
 
-    <h2>用量清单 <span id="total" class="hint"></span></h2>
-    <ul id="stats" class="stats"></ul>
+  <section id="panel-export" class="workspace-panel secondary-panel" aria-label="导出图纸">
+    <div class="panel-heading"><div><span class="step-label">04 / EXPORT</span><h2>导出图纸</h2><p>调整打印内容，确认预览后下载。</p></div></div>
+    <details id="export-box" class="card export-box" open>
+      <summary>导出设置</summary>
+      <div class="export-fields">
+        <label>图纸标题<input id="ex-title" type="text" maxlength="80" placeholder="留空则不显示标题" value="拼豆图纸"></label>
+        <label>水印文字<input id="ex-watermark" type="text" maxlength="80" placeholder="留空则不添加水印"></label>
+        <label>水印透明度 <output id="ex-opacity-value">12%</output><input id="ex-opacity" type="range" min="5" max="40" value="12"></label>
+        <label>导出格式<select id="ex-format"><option value="png">PNG · 无损图片</option><option value="jpeg">JPEG · 较小文件</option><option value="webp">WebP · 较小文件</option><option value="pdf">PDF · 打印分享</option></select></label>
+      </div>
+      <fieldset class="export-contents"><legend>图纸内容</legend>
+        <label class="check"><input id="ex-codes" type="checkbox" checked><span>豆子色号</span></label>
+        <label class="check"><input id="ex-grid" type="checkbox" checked><span>网格与坐标</span></label>
+        <label class="check"><input id="ex-board" type="checkbox" checked><span>拼板分割线</span></label>
+        <label class="check"><input id="ex-summary" type="checkbox" checked><span>尺寸与总颗数</span></label>
+        <label class="check"><input id="ex-legend" type="checkbox" checked><span>颜色用量清单</span></label>
+        <label class="check"><input id="ex-reference" type="checkbox"><span>参考图（如有）</span></label>
+      </fieldset>
+      <div class="export-preview"><canvas id="ex-preview" aria-label="导出图纸预览" hidden></canvas><div id="ex-placeholder" class="export-empty"><span aria-hidden="true">✦</span><p>完成图纸后，这里会显示导出预览</p></div></div>
+      <p id="ex-note" class="hint">预览与下载使用相同的内容配置。</p>
+      <button id="ex-download" class="btn primary" type="button" disabled>下载图纸</button>
+    </details>
   </section>
 </main>
 
