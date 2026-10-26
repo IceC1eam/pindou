@@ -143,8 +143,8 @@
   // 同一份图纸画成不同“烫法”的样子。烫法是拼豆社区里常见的表面质感做法：垫什么材料熨烫，就留下什么肌理。
   // 纹理全部是程序生成的示意（固定随机种子，重绘不会闪烁），真实效果取决于垫材、温度和手法。
   const EFFECTS = [
-    { id: "holes", name: "有孔烫", note: "轻烫，保留圆孔，颗粒感强、最有“拼豆感”，但不够牢固" },
-    { id: "flat", name: "正常烫", note: "平烫：表面平滑、孔基本闭合，颜色鲜艳，最稳妥的新手烫法" },
+    { id: "holes", name: "有孔烫", note: "豆子已经熔接成片，仍保留缩小的圆孔与浅浅的颗粒轮廓" },
+    { id: "flat", name: "正常烫", note: "豆子熔成连续薄片，接缝很浅，中心孔基本闭合" },
     { id: "towel", name: "毛巾烫", note: "垫纯棉毛巾：表面有细毛、哑光绒感，沾上毛巾纤维所以颜色略偏灰，适合小动物、玩偶" },
     { id: "loofah", name: "澡巾烫", note: "垫粗澡巾：均匀的颗粒凹凸，复古做旧；没有细毛，颜色比毛巾烫鲜艳，也更好撕" },
     { id: "weave", name: "编织烫", note: "交织的藤编/布纹肌理，适合花篮、杯垫" },
@@ -163,8 +163,6 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
-
-  const darken = (rgb, t) => `rgb(${rgb.map((v) => Math.round(v * (1 - t))).join(",")})`;
 
   function rng(seed) {                          // 固定种子的伪随机数，保证纹理每次一样
     let a = seed >>> 0;
@@ -279,25 +277,25 @@
   }
 
   /** 一颗豆子熔合后的底色形态（纹理叠在它们上面）。 */
-  function paintBead(ctx, fx, p, x, y, c) {
-    if (fx === "holes") {                       // 轻烫：豆子鼓成圆角方块，中间的孔还在
+  function paintBead(ctx, fx, p, x, y, c, transparent, bg) {
+    if (fx === "holes") {                       // 熔接后的圆角方块相互贴合，孔缩小但仍可见
       ctx.fillStyle = p.hex;
-      rr(ctx, x + c * 0.03, y + c * 0.03, c * 0.94, c * 0.94, c * 0.32); ctx.fill();
-      ctx.strokeStyle = darken(p.rgb, 0.25); ctx.lineWidth = Math.max(1, c * 0.045); ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,.26)";
-      ctx.beginPath(); ctx.arc(x + c * 0.33, y + c * 0.3, c * 0.1, 0, TAU); ctx.fill();
-      ctx.fillStyle = "rgba(0,0,0,.5)";
-      ctx.beginPath(); ctx.arc(x + c / 2, y + c / 2, c * 0.14, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = Math.max(0.6, c * 0.03);
-      ctx.beginPath(); ctx.arc(x + c / 2, y + c / 2, c * 0.16, 0.2, Math.PI); ctx.stroke();
+      rr(ctx, x - 0.15, y - 0.15, c + 0.3, c + 0.3, c * 0.22); ctx.fill();
+      ctx.strokeStyle = "rgba(50,35,30,.10)"; ctx.lineWidth = Math.max(0.5, c * 0.018); ctx.stroke();
+      ctx.save();
+      if (transparent) ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = transparent ? "#000" : bg;
+      ctx.beginPath(); ctx.arc(x + c / 2, y + c / 2, c * 0.085, 0, TAU); ctx.fill();
+      ctx.restore();
       return;
     }
     ctx.fillStyle = p.hex;
     if (fx === "flat" || fx === "glitter" || fx === "gloss") {
-      rr(ctx, x + c * 0.01, y + c * 0.01, c * 0.98, c * 0.98, c * 0.1); ctx.fill();
-      ctx.strokeStyle = darken(p.rgb, fx === "flat" ? 0.2 : 0.14); ctx.lineWidth = Math.max(1, c * 0.035); ctx.stroke();
+      ctx.fillRect(x - 0.25, y - 0.25, c + 0.5, c + 0.5);
+      ctx.strokeStyle = "rgba(45,35,30,.075)"; ctx.lineWidth = Math.max(0.5, c * 0.012);
+      ctx.strokeRect(x + 0.25, y + 0.25, c - 0.5, c - 0.5);
       if (fx === "flat") {                      // 孔基本闭合，只剩一点点凹痕
-        if (c >= 8) { ctx.fillStyle = "rgba(0,0,0,.16)"; ctx.beginPath(); ctx.arc(x + c / 2, y + c / 2, c * 0.045, 0, TAU); ctx.fill(); }
+        if (c >= 13) { ctx.fillStyle = "rgba(40,30,25,.10)"; ctx.beginPath(); ctx.arc(x + c / 2, y + c / 2, c * 0.025, 0, TAU); ctx.fill(); }
       } else {                                  // 光泽：每颗豆左上亮、右下暗
         const strong = fx === "gloss";
         const g = ctx.createLinearGradient(x, y, x + c, y + c);
@@ -305,7 +303,7 @@
         g.addColorStop(0.5, "rgba(255,255,255,0)");
         g.addColorStop(1, `rgba(0,0,0,${strong ? 0.22 : 0.16})`);
         ctx.fillStyle = g;
-        rr(ctx, x + c * 0.01, y + c * 0.01, c * 0.98, c * 0.98, c * 0.1); ctx.fill();
+        ctx.fillRect(x, y, c, c);
       }
       return;
     }
@@ -315,7 +313,7 @@
   }
 
   /**
-   * o: { W, H, grid, palette, cell, effect, pad?, bg?, dpr?, makeCanvas?, crop?: {x, y, w, h} }
+   * o: { W, H, grid, palette, cell, effect, pad?, bg?, transparent?, dpr?, makeCanvas?, crop?: {x, y, w, h} }
    * 返回画布像素尺寸 { width, height }。crop 只画网格的一块（用于并排对比的局部放大）。
    * makeCanvas：生成离屏画布的函数（默认用 document.createElement("canvas")），纹理瓦片用。
    */
@@ -324,8 +322,10 @@
     const crop = o.crop || { x: 0, y: 0, w: o.W, h: o.H };
     const pad = o.pad == null ? Math.round(c * 1.2) : o.pad;
     const width = crop.w * c + pad * 2, height = crop.h * c + pad * 2;
-    ctx.fillStyle = o.bg || "#ecebe7";
-    ctx.fillRect(0, 0, width, height);
+    if (!o.transparent) {
+      ctx.fillStyle = o.bg || "#ecebe7";
+      ctx.fillRect(0, 0, width, height);
+    }
 
     const cells = [];                          // 只收集有豆子的格子
     for (let j = 0; j < crop.h; j++) {
@@ -335,7 +335,7 @@
       }
     }
     const fx = o.effect;
-    for (const b of cells) paintBead(ctx, fx, palette[b.idx], b.px, b.py, c);
+    for (const b of cells) paintBead(ctx, fx, palette[b.idx], b.px, b.py, c, !!o.transparent, o.bg || "#ecebe7");
 
     const ov = OVERLAY[fx];
     if (ov && cells.length) {                  // 只在有豆子的地方叠纹理

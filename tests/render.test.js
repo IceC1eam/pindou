@@ -2,6 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { PindouRender: R } = require("../public/render.js");
+const { PindouScene: Scene } = require("../public/scene.js");
 
 /** 记录调用的假 2d 上下文：只关心“画了多少次”，不真的绘制。 */
 function fakeCtx() {
@@ -82,4 +83,21 @@ test("crop only draws the requested cells", () => {
   const size = R.drawFused(ctx, { W, H, grid: g, palette: pal, cell: 8, effect: "loofah", pad: 2, crop: { x: 1, y: 1, w: 2, h: 2 } });
   assert.deepEqual(size, { width: 20, height: 20 });
   assert.equal(calls.fillRect, 1 + 4);        // 背景 + 4 格（没有离屏画布，不画纹理）
+});
+
+test("透明的成品贴图只画豆子，桌面场景在正面和侧面采用不同投影", () => {
+  const { ctx: transparent, calls: transparentCalls } = fakeCtx();
+  R.drawFused(transparent, { ...sample(), cell: 10, effect: "flat", pad: 0, transparent: true });
+  assert.equal(transparentCalls.fillRect, 10); // 10 颗豆子，没有背景矩形
+
+  const transforms = [];
+  const texture = { width: 40, height: 30 };
+  for (const angle of [0, 1.18]) {
+    const { ctx, calls } = fakeCtx();
+    ctx.transform = (...args) => transforms.push(args);
+    Scene.drawScene(ctx, { ...sample(), texture, width: 640, height: 360, angle, elevation: 0.7 });
+    assert.equal(calls.drawImage, 2); // 成品轮廓投影 + 正面贴图
+    assert.ok(calls.fill > 2);        // 桌面和外露侧壁
+  }
+  assert.notDeepEqual(transforms[0].slice(0, 4), transforms[2].slice(0, 4));
 });

@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender;
+  const Core = PindouCore, Pal = PindouPalettes, R = PindouRender, Scene = PindouScene;
   const $ = (id) => document.getElementById(id);
   const show = (id, on) => { $(id).hidden = !on; };
   const LS_KEY = "pindou.config.v1";
@@ -708,8 +708,11 @@
 
   // ---------- 烫豆效果预览 ----------
   const EFFECT_KEY = "pindou.effect";
-  const PV_PAD = 14, CMP_CELL = 16, CMP_K = 8, CMP_PAD = 6;
+  const CMP_CELL = 16, CMP_K = 8, CMP_PAD = 6;
   let effect = "flat", pvTimer = 0;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let cameraPlaying = !reducedMotion.matches, cameraPhase = 0, cameraLast = 0, cameraFrame = 0;
+  let sceneData = null, sceneWidth = 0, sceneHeight = 0;
   try { const e = localStorage.getItem(EFFECT_KEY); if (R.EFFECTS.some((x) => x.id === e)) effect = e; } catch { /* 隐私模式等 */ }
   const cmpCv = new Map();                 // 效果 id → 对比小图的 canvas
 
@@ -725,6 +728,35 @@
   }
 
   function schedulePreview() { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 120); }
+
+  function drawPreviewScene() {
+    if (!sceneData) return;
+    const progress = (1 - Math.cos(cameraPhase)) / 2;   // 两端速度归零，正面 ↔ 侧面平滑往返
+    Scene.drawScene($("pv").getContext("2d"), { ...sceneData, width: sceneWidth, height: sceneHeight,
+      angle: progress * 1.18, elevation: 0.92 - progress * 0.47 });
+  }
+
+  function animateCamera(now) {
+    cameraFrame = 0;
+    if (!cameraPlaying || !sceneData || !$("pv-box").open || document.hidden) return;
+    if (cameraLast && now - cameraLast < 32) {
+      cameraFrame = requestAnimationFrame(animateCamera);
+      return;
+    }
+    if (cameraLast) cameraPhase += Math.min(now - cameraLast, 100) * Math.PI * 2 / 14000;
+    if (cameraPhase > Math.PI * 2) cameraPhase %= Math.PI * 2;
+    cameraLast = now;
+    drawPreviewScene();
+    cameraFrame = requestAnimationFrame(animateCamera);
+  }
+
+  function syncCamera() {
+    $("pv-motion").textContent = cameraPlaying ? "暂停镜头" : "播放镜头";
+    $("pv-motion").setAttribute("aria-pressed", String(!cameraPlaying));
+    cancelAnimationFrame(cameraFrame); cameraFrame = 0; cameraLast = 0;
+    if (cameraPlaying && sceneData && $("pv-box").open && !document.hidden)
+      cameraFrame = requestAnimationFrame(animateCamera);
+  }
 
   function setEffect(id) {
     effect = id;
@@ -748,12 +780,19 @@
     if (!$("pv-box").open || !state.grid) return;
     const total = Core.summarize(state.grid, state.palette.length).total;
     show("pv-empty", !total); show("pv-body", !!total);
-    if (!total) return;
+    if (!total) { sceneData = null; syncCamera(); return; }
     const avail = Math.max(160, $("pv-main").clientWidth);
-    const cell = Math.max(3, Math.min(20, Math.floor((avail - 2 * PV_PAD) / state.W)));
+    const cell = Math.max(4, Math.min(20, Math.floor(1200 / Math.max(state.W, state.H))));
     const base = { W: state.W, H: state.H, grid: state.grid, palette: state.palette };
-    R.drawFused(sizedCanvas($("pv"), state.W * cell + 2 * PV_PAD, state.H * cell + 2 * PV_PAD),
-      { ...base, cell, effect, pad: PV_PAD, dpr: pvDpr() });
+    const texture = document.createElement("canvas");
+    texture.width = state.W * cell; texture.height = state.H * cell;
+    R.drawFused(texture.getContext("2d"), { ...base, cell, effect, pad: 0, transparent: true });
+    sceneData = { ...base, texture };
+    sceneWidth = avail;
+    sceneHeight = Math.max(290, Math.min(500, Math.round(avail * 0.65)));
+    sizedCanvas($("pv"), sceneWidth, sceneHeight);
+    drawPreviewScene();
+    syncCamera();
     const crop = R.pickCrop(state.W, state.H, state.grid, CMP_K);
     for (const f of R.EFFECTS) {
       const c = cmpCv.get(f.id);
@@ -765,12 +804,14 @@
   }
 
   function exportEffect() {
-    if (!state.grid || !Core.summarize(state.grid, state.palette.length).total) return toast("图纸是空的，先放一些豆子", true);
-    const cell = Math.max(8, Math.min(32, Math.floor(2400 / Math.max(state.W, state.H))));
-    const pad = Math.round(cell * 1.5);
+    if (!sceneData) return toast("图纸是空的，先放一些豆子", true);
+    const factor = Math.max(1, Math.min(3, 1800 / sceneWidth));
     const c = document.createElement("canvas");
-    c.width = state.W * cell + 2 * pad; c.height = state.H * cell + 2 * pad;
-    R.drawFused(c.getContext("2d"), { W: state.W, H: state.H, grid: state.grid, palette: state.palette, cell, effect, pad });
+    c.width = Math.round(sceneWidth * factor); c.height = Math.round(sceneHeight * factor);
+    const g = c.getContext("2d"); g.scale(factor, factor);
+    const progress = (1 - Math.cos(cameraPhase)) / 2;
+    Scene.drawScene(g, { ...sceneData, width: sceneWidth, height: sceneHeight,
+      angle: progress * 1.18, elevation: 0.92 - progress * 0.47 });
     c.toBlob((blob) => {
       if (!blob) return toast("导出失败：图纸太大", true);
       const a = document.createElement("a");
@@ -829,7 +870,9 @@
   });
   $("b-export").addEventListener("click", exportPng);
   $("pv-export").addEventListener("click", exportEffect);
-  $("pv-box").addEventListener("toggle", schedulePreview);
+  $("pv-motion").addEventListener("click", () => { cameraPlaying = !cameraPlaying; syncCamera(); });
+  $("pv-box").addEventListener("toggle", () => { if ($("pv-box").open) schedulePreview(); else syncCamera(); });
+  document.addEventListener("visibilitychange", syncCamera);
   window.addEventListener("resize", schedulePreview);
   $("ai-gen").addEventListener("click", () => aiRun("generate"));
   $("ai-edit").addEventListener("click", () => aiRun("edit"));
@@ -857,6 +900,7 @@
   showImgInfo();
   setTool("view");
   initPreview();
+  syncCamera();
   regenerate();
   loadAiStatus();
 })();

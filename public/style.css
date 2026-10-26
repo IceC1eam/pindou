@@ -122,8 +122,11 @@ canvas { -webkit-user-select: none; user-select: none; }
 /* 烫豆效果预览 */
 .preview { padding: 10px 14px; }
 .preview summary { font-weight: 650; }
-.pv-main { overflow: auto; border-radius: 10px; background: #ecebe7; text-align: center; max-height: 70vh; }
-.pv-main canvas { display: inline-block; max-width: 100%; vertical-align: top; }
+.pv-main { overflow: hidden; border-radius: 10px; background: #e9dfd2; }
+.pv-main canvas { display: block; width: 100%; height: auto; }
+.pv-actions { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin: 8px 0 12px; }
+.pv-actions .hint { flex: 1; }
+.pv-actions button { flex: none; }
 .pv-cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 10px; }
 .cmp { display: grid; gap: 4px; justify-items: center; padding: 6px; font: inherit; color: var(--ink); background: var(--bg); border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
 .cmp.on { border-color: var(--accent); }

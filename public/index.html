@@ -133,10 +133,11 @@
       <summary>烫豆效果预览 <span id="pv-note" class="hint"></span></summary>
       <p id="pv-empty" class="hint" hidden>图纸还是空的，放几颗豆子后这里会显示熨烫后的样子。</p>
       <div id="pv-body">
-        <div id="pv-main" class="pv-main"><canvas id="pv"></canvas></div>
+        <div id="pv-main" class="pv-main"><canvas id="pv" aria-label="桌面上的烫豆成品，镜头在正面与侧面之间移动"></canvas></div>
+        <div class="pv-actions"><span class="hint">桌面成品 · 自动环绕查看熔接表面与侧面厚度</span><button id="pv-motion" class="btn ghost small" type="button" aria-pressed="false">暂停镜头</button></div>
         <p class="hint">下面是同一处局部在常见烫法下的样子（垫什么材料熨烫，就留下什么肌理），点一个切换上方的整体预览。纹理是程序模拟的示意，真实效果取决于垫材、温度和手法，建议先用小样试烫。</p>
         <div id="pv-cmp" class="pv-cmp"></div>
-        <button id="pv-export" class="btn ghost small" type="button">导出效果图 PNG</button>
+        <button id="pv-export" class="btn ghost small" type="button">导出桌面预览 PNG</button>
       </div>
     </details>
 
@@ -150,6 +151,7 @@
 <script src="palettes.js"></script>
 <script src="quantize.js"></script>
 <script src="render.js"></script>
+<script src="scene.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
