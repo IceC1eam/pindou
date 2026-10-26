@@ -714,8 +714,9 @@
   const cmpCv = new Map();                 // 效果 id → 对比小图的 canvas
 
   /** 按设备像素比设置画布大小（最多 2 倍），返回 2d 上下文。 */
+  const pvDpr = () => Math.min(2, window.devicePixelRatio || 1);
   function sizedCanvas(c, w, h) {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = pvDpr();
     c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
     c.style.width = w + "px"; c.style.height = h + "px";
     const g = c.getContext("2d");
@@ -752,12 +753,12 @@
     const cell = Math.max(3, Math.min(20, Math.floor((avail - 2 * PV_PAD) / state.W)));
     const base = { W: state.W, H: state.H, grid: state.grid, palette: state.palette };
     R.drawFused(sizedCanvas($("pv"), state.W * cell + 2 * PV_PAD, state.H * cell + 2 * PV_PAD),
-      { ...base, cell, effect, pad: PV_PAD });
+      { ...base, cell, effect, pad: PV_PAD, dpr: pvDpr() });
     const crop = R.pickCrop(state.W, state.H, state.grid, CMP_K);
     for (const f of R.EFFECTS) {
       const c = cmpCv.get(f.id);
       R.drawFused(sizedCanvas(c, crop.w * CMP_CELL + 2 * CMP_PAD, crop.h * CMP_CELL + 2 * CMP_PAD),
-        { ...base, cell: CMP_CELL, effect: f.id, pad: CMP_PAD, crop });
+        { ...base, cell: CMP_CELL, effect: f.id, pad: CMP_PAD, crop, dpr: pvDpr() });
       c.parentElement.classList.toggle("on", f.id === effect);
     }
     $("pv-note").textContent = "· " + R.EFFECTS.find((f) => f.id === effect).note;

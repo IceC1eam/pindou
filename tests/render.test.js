@@ -6,7 +6,7 @@ const { PindouRender: R } = require("../public/render.js");
 /** 记录调用的假 2d 上下文：只关心“画了多少次”，不真的绘制。 */
 function fakeCtx() {
   const calls = {};
-  const count = (n) => (...a) => { calls[n] = (calls[n] || 0) + 1; return n === "createLinearGradient" ? { addColorStop() {} } : undefined; };
+  const count = (n) => (...a) => { calls[n] = (calls[n] || 0) + 1; return /^create(Linear|Radial)Gradient$/.test(n) ? { addColorStop() {} } : undefined; };
   const ctx = new Proxy({}, {
     get: (t, k) => (k in t ? t[k] : count(String(k))),
     set: (t, k, v) => { t[k] = v; return true; },
@@ -25,28 +25,61 @@ test("pickCrop prefers the window with the most colors", () => {
   assert.equal(R.pickCrop(5, 5, new Int16Array(25).fill(-1), 8).w, 5);   // 比 k 小的图：取整张
 });
 
+test("烫法列表：正常烫、毛巾烫、澡巾烫等社区常见做法都在", () => {
+  const names = [...R.EFFECTS.map((f) => f.name)];
+  for (const n of ["有孔烫", "正常烫", "毛巾烫", "澡巾烫", "编织烫", "格纹烫", "格利特烫", "亮面烫"]) assert.ok(names.includes(n), n);
+  assert.equal(new Set(R.EFFECTS.map((f) => f.id)).size, R.EFFECTS.length);
+  assert.ok(R.EFFECTS.every((f) => f.note.length > 8));
+});
+
+const fakeCanvas = (made) => () => { made.push(1); const { ctx } = fakeCtx(); return { width: 0, height: 0, getContext: () => ctx }; };
+const sample = () => ({ W: 4, H: 3, grid: Int16Array.from([0, 0, 1, 1, 0, 2, 2, 1, -1, -1, 2, 0]), palette: pal });
+
 test("every effect draws and reports the right canvas size", () => {
-  const W = 4, H = 3, g = Int16Array.from([0, 0, 1, 1, 0, 2, 2, 1, -1, -1, 2, 0]);
   for (const f of R.EFFECTS) {
     const { ctx } = fakeCtx();
-    const size = R.drawFused(ctx, { W, H, grid: g, palette: pal, cell: 10, effect: f.id, pad: 5 });
+    const size = R.drawFused(ctx, { ...sample(), cell: 10, effect: f.id, pad: 5, makeCanvas: fakeCanvas([]) });
     assert.deepEqual(size, { width: 4 * 10 + 10, height: 3 * 10 + 10 }, f.id);
   }
 });
 
-test("melt blends only where neighbours differ; flat does not", () => {
-  const W = 3, H = 1;
-  const same = Int16Array.from([0, 0, 0]), differ = Int16Array.from([0, 1, 0]);
-  const run = (g, effect) => { const { ctx, calls } = fakeCtx(); R.drawFused(ctx, { W, H, grid: g, palette: pal, cell: 10, effect, pad: 0 }); return calls.createLinearGradient || 0; };
-  assert.equal(run(same, "melt"), 0);
-  assert.equal(run(differ, "melt"), 2);       // 两条交界
-  assert.equal(run(differ, "flat"), 0);
+test("垫材类烫法（毛巾/澡巾/编织/格纹/格利特）用纹理瓦片并只在豆子上叠加；平烫、有孔烫不用", () => {
+  for (const id of ["towel", "loofah", "weave", "lattice", "glitter"]) {
+    const { ctx, calls } = fakeCtx(), made = [];
+    R.drawFused(ctx, { ...sample(), cell: 10, effect: id, pad: 5, makeCanvas: fakeCanvas(made) });
+    assert.equal(calls.createPattern, 1, id);
+    assert.equal(calls.clip, 1, id);                       // 裁剪到有豆子的格子
+  }
+  for (const id of ["holes", "flat"]) {
+    const { ctx, calls } = fakeCtx();
+    R.drawFused(ctx, { ...sample(), cell: 10, effect: id, pad: 5, makeCanvas: fakeCanvas([]) });
+    assert.equal(calls.createPattern, undefined, id);
+    assert.equal(calls.clip, undefined, id);
+  }
+  const { ctx, calls } = fakeCtx();
+  R.drawFused(ctx, { ...sample(), cell: 10, effect: "gloss", pad: 5, makeCanvas: fakeCanvas([]) });
+  assert.equal(calls.createPattern, undefined);             // 亮面只叠一道反光带，不要瓦片
+  assert.equal(calls.clip, 1);
+});
+
+test("纹理瓦片按（烫法、格子大小）缓存，重绘不会重新生成", () => {
+  const made = [];
+  for (let k = 0; k < 3; k++) R.drawFused(fakeCtx().ctx, { ...sample(), cell: 13, effect: "weave", pad: 0, makeCanvas: fakeCanvas(made) });
+  assert.equal(made.length, 1);
+  R.drawFused(fakeCtx().ctx, { ...sample(), cell: 14, effect: "weave", pad: 0, makeCanvas: fakeCanvas(made) });
+  assert.equal(made.length, 2);                             // 格子大小变了才重新做
+});
+
+test("没有离屏画布可用时（如 Node），带纹理的烫法也能画，只是没有纹理", () => {
+  const { ctx, calls } = fakeCtx();
+  R.drawFused(ctx, { ...sample(), cell: 10, effect: "towel", pad: 0 });
+  assert.equal(calls.createPattern, undefined);
 });
 
 test("crop only draws the requested cells", () => {
   const W = 6, H = 6, g = new Int16Array(W * H).fill(0);
   const { ctx, calls } = fakeCtx();
-  const size = R.drawFused(ctx, { W, H, grid: g, palette: pal, cell: 8, effect: "melt", pad: 2, crop: { x: 1, y: 1, w: 2, h: 2 } });
+  const size = R.drawFused(ctx, { W, H, grid: g, palette: pal, cell: 8, effect: "loofah", pad: 2, crop: { x: 1, y: 1, w: 2, h: 2 } });
   assert.deepEqual(size, { width: 20, height: 20 });
-  assert.equal(calls.fillRect, 1 + 4);        // 背景 + 4 格
+  assert.equal(calls.fillRect, 1 + 4);        // 背景 + 4 格（没有离屏画布，不画纹理）
 });
