@@ -42,7 +42,8 @@ def status():
     st = config.settings()
     return {"enabled": config.api_key() is not None, "remaining": quota.remaining(), "limit": st["daily_limit"],
             "default_preset": st["default_preset"],
-            "presets": [{"id": k, "label": v["label"]} for k, v in st["presets"].items()]}
+            "presets": [{"id": k, "label": v["label"], "text_model": v["text_model"], "image_model": v["image_model"]}
+                        for k, v in st["presets"].items()]}
 
 
 @router.post("/plan")

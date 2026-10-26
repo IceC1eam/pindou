@@ -242,6 +242,8 @@ class ApiTests(Base):
                          ["doubao-seedream-5-0-pro-260628", "doubao-seedream-5-0-flash-260915"])
         s = self.c.get("/api/ai/status").json()
         self.assertEqual([p["id"] for p in s["presets"]], ["fast", "pro"])
+        self.assertEqual(s["limit"], 100)
+        self.assertEqual(s["presets"][1]["image_model"], "doubao-seedream-5-0-pro-260628")
         self.assertEqual(self.c.post("/api/ai/plan", json={"text": "猫", "mode": "generate", "preset": "x"}).status_code, 400)
 
     def test_preset_overrides_from_ai_json(self):

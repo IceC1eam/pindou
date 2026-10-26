@@ -14,6 +14,8 @@ tests/               node --test tests/quantize.test.js
 backend/tests/       cd backend && python -m unittest discover -s tests -t .
 ```
 
+界面分左右两栏：**左 = 参考图**（预览、上传/拖放/粘贴、AI 生图聊天、模型档位），**右 = 图纸**（取样与取色配置、画布、工具、用量清单）。
+
 配置项：图片适配（裁剪/留空/拉伸）、宽高与锁定比例、色板、最多用色数、抖动、透明留空、亮度/对比度/饱和度、豆子样式、缩放、网格、色号、加粗线间隔、拼板分割线。
 工具：查看（点格子高亮同色）/ 画笔 / 橡皮。手动修改后再改配置不会自动覆盖，需点“重新生成”。
 
@@ -23,7 +25,9 @@ backend/tests/       cd backend && python -m unittest discover -s tests -t .
 
 1. **无参考图时生成图片**：Seedream 文生图。
 2. **理解需求、组装提示词**：文本模型把一句话需求改写成适合出图的提示词，并建议图纸宽高与用色数；文本模型不可用时自动降级为默认模板。提示词会显示出来，可改后点“用此提示词重画”。
-3. **按描述修改图片**：Seedream 图生图，基于当前源图修改（不是基于已量化的图纸，所以手动画的格子会被替换）。“回到上一张”可撤销一次。
+3. **按描述修改图片**：Seedream 图生图，基于当前参考图修改（不是基于已量化的图纸，所以手动画的格子会被替换）。
+
+生图以聊天形式进行：每次结果都留在对话里，点缩略图即可把它设为参考图（相当于回退），展开“提示词”可改后重画。浏览器里最多保留最近 12 张结果图。
 
 **不让模型画像素。** 提示词只要求清晰的扁平插画（并明确禁止像素/马赛克/网格风格），模型画出来的图和上传的照片一样，走同一套固定的取色流程（`quantize.js`：缩放 → Lab 最近色 → 限色数）变成豆子格。格点对齐由这段确定性代码保证，模型的输出不会造成像素偏移。
 
@@ -39,11 +43,11 @@ backend/tests/       cd backend && python -m unittest discover -s tests -t .
 型号定义在 `backend/pindou/config.py` 的 `PRESETS`；型号会更新、旧型号会下线，可在服务器 `/var/lib/apps/pindou/ai.json` 覆盖（也可填推理接入点 ID `ep-…`）：
 
 ```json
-{"default_preset": "fast", "daily_limit": 40,
+{"default_preset": "fast", "daily_limit": 100,
  "presets": {"pro": {"image_model": "doubao-seedream-5-0-pro-260628"}}}
 ```
 
-每天出图次数有上限（默认 40，北京时间自然日），出图失败不扣次数。`base_url` 只接受 `*.volces.com`，避免密钥被发往别处。
+每天出图次数有上限（默认 100，北京时间自然日），出图失败不扣次数。`base_url` 只接受 `*.volces.com`，避免密钥被发往别处。
 
 ### 密钥（环境变量 `ARK_API_KEY`）
 

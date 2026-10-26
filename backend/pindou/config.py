@@ -22,7 +22,7 @@ PRESETS = {
 }
 DEFAULTS = {
     "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "daily_limit": 40,              # 每天最多出图次数（出图才计费，提示词组装不计）
+    "daily_limit": 100,             # 每天最多出图次数（出图才计费，提示词组装不计）
     "default_preset": "fast",
 }
 MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
