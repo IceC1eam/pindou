@@ -1,0 +1,14 @@
+{
+  "id": "pindou",
+  "name": "拼豆图纸",
+  "description": "上传参考图或空白起稿，生成拼豆图纸与用量清单",
+  "icon": "🟣",
+  "color": "#9a5fc4",
+  "version": "0.1.0",
+  "order": 20,
+  "type": "static",
+  "public": false,
+  "static": {
+    "root": "public"
+  }
+}
